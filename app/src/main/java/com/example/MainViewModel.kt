@@ -316,4 +316,12 @@ class MainViewModel : ViewModel() {
         _rescuesCount.value = _rescuesCount.value + 1
         _trustScore.value = _trustScore.value + 15
     }
+
+    private val _userCustomPlaces = MutableStateFlow<List<PetPlace>>(emptyList())
+    val userCustomPlaces: StateFlow<List<PetPlace>> = _userCustomPlaces.asStateFlow()
+
+    fun addUserCustomPlace(place: PetPlace) {
+        _userCustomPlaces.value = _userCustomPlaces.value + place
+        _trustScore.value = _trustScore.value + 20
+    }
 }
