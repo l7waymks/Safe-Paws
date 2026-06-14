@@ -2643,11 +2643,16 @@ fun MapScreen(viewModel: MainViewModel) {
     // Combine custom preloaded Riyadh pet care spots with reactive live places and user reports
     val combinedPlaces = remember(fetchedPlacesList, incidents, userCustomPlaces, userLatitude, userLongitude) {
         val customRescueSpots = incidents.map { incident ->
-            val hash = incident.id.hashCode().toDouble()
-            val latOffset = ((Math.abs(hash) % 100) / 1000.0) - 0.05
-            val lngOffset = (((Math.abs(hash) / 100).toInt() % 100) / 1000.0) - 0.05
-            val lat = (userLatitude ?: 34.0209) + latOffset
-            val lng = (userLongitude ?: -6.8416) + lngOffset
+            val lat = incident.latitude ?: run {
+                val hash = incident.id.hashCode().toDouble()
+                val latOffset = ((Math.abs(hash) % 100) / 1000.0) - 0.05
+                (userLatitude ?: 34.0209) + latOffset
+            }
+            val lng = incident.longitude ?: run {
+                val hash = incident.id.hashCode().toDouble()
+                val lngOffset = (((Math.abs(hash) / 100).toInt() % 100) / 1000.0) - 0.05
+                (userLongitude ?: -6.8416) + lngOffset
+            }
             PetPlace(
                 id = incident.id,
                 name = incident.title,
@@ -3174,6 +3179,10 @@ fun MapScreen(viewModel: MainViewModel) {
                     org.osmdroid.config.Configuration.getInstance().userAgentValue = ctx.packageName
                     
                     MapView(ctx).apply {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            this.isForceDarkAllowed = false
+                        }
+                        
                         setMultiTouchControls(true)
                         setBuiltInZoomControls(false)
                         
