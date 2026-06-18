@@ -49,9 +49,7 @@ data class StrayIncident(
     val commentsCount: Int,
     val likesCount: Int,
     val isEmergency: Boolean = false,
-    val timestamp: String,
-    val latitude: Double? = null,
-    val longitude: Double? = null
+    val timestamp: String
 )
 
 class MainViewModel : ViewModel() {
@@ -112,16 +110,15 @@ class MainViewModel : ViewModel() {
     // Stray Map Pins state
     private val _strayIncidents = MutableStateFlow(
         listOf(
-            StrayIncident("s1", "أربعة جراء ضائعة بحاجة لرعاية عاجلة", "تم العثور عليها وحالتها مستقرة بانتظار تبنيها.", "حي الياسمين، الرياض", "أحمد محمد", 41, 240, true, "منذ يومين", 24.8251, 46.6373),
-            StrayIncident("s2", "كلب جولدن - حالة طارئة", "يحتاج لعملية جراحية عاجلة. شارك للمساعدة!", "حي الملز، الرياض", "أحمد محمد", 18, 1200, true, "منذ ٥ ساعات", 24.6644, 46.7311),
-            StrayIncident("s3", "جمال العيون في الطبيعة", "لقطة فنية لإحدى حالات الإنقاذ السابقة.", "حي السليمانية، الرياض", "سارة أحمد", 124, 182, false, "منذ ٣ أيام", 24.7031, 46.6961)
+            StrayIncident("s1", "أربعة جراء ضائعة بحاجة لرعاية عاجلة", "تم العثور عليها وحالتها مستقرة بانتظار تبنيها.", "حي الياسمين، الرياض", "أحمد محمد", 41, 240, true, "منذ يومين"),
+            StrayIncident("s2", "كلب جولدن - حالة طارئة", "يحتاج لعملية جراحية عاجلة. شارك للمساعدة!", "حي الملز، الرياض", "أحمد محمد", 18, 1200, true, "منذ ٥ ساعات"),
+            StrayIncident("s3", "جمال العيون في الطبيعة", "لقطة فنية لإحدى حالات الإنقاذ السابقة.", "حي السليمانية، الرياض", "سارة أحمد", 124, 182, false, "منذ ٣ أيام")
         )
     )
     val strayIncidents: StateFlow<List<StrayIncident>> = _strayIncidents.asStateFlow()
 
     init {
         fetchAnimals()
-        fetchMapData()
     }
 
     fun selectTab(tab: AppTab) {
@@ -138,23 +135,6 @@ class MainViewModel : ViewModel() {
                 _animalsList.value = SupabaseManager.fallbackAnimals
             } finally {
                 _isLoading.value = false
-            }
-        }
-    }
-
-    fun fetchMapData() {
-        viewModelScope.launch {
-            try {
-                val list = WebMapManager.getIncidents()
-                _strayIncidents.value = list
-            } catch (e: Exception) {
-                // keep local
-            }
-            try {
-                val list = WebMapManager.getPlaces()
-                _userCustomPlaces.value = list
-            } catch (e: Exception) {
-                // keep local
             }
         }
     }
@@ -330,36 +310,10 @@ class MainViewModel : ViewModel() {
             commentsCount = 0,
             likesCount = 0,
             isEmergency = true,
-            timestamp = "الآن",
-            latitude = null,
-            longitude = null
+            timestamp = "الآن"
         )
         _strayIncidents.value = listOf(newIncident) + _strayIncidents.value
         _rescuesCount.value = _rescuesCount.value + 1
         _trustScore.value = _trustScore.value + 15
-
-        viewModelScope.launch {
-            try {
-                WebMapManager.addIncident(newIncident)
-            } catch (e: Exception) {
-                // keep local only
-            }
-        }
-    }
-
-    private val _userCustomPlaces = MutableStateFlow<List<PetPlace>>(emptyList())
-    val userCustomPlaces: StateFlow<List<PetPlace>> = _userCustomPlaces.asStateFlow()
-
-    fun addUserCustomPlace(place: PetPlace) {
-        _userCustomPlaces.value = _userCustomPlaces.value + place
-        _trustScore.value = _trustScore.value + 20
-
-        viewModelScope.launch {
-            try {
-                WebMapManager.addPlace(place)
-            } catch (e: Exception) {
-                // keep local only
-            }
-        }
     }
 }

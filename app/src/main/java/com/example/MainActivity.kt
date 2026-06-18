@@ -1,7 +1,5 @@
 package com.example
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -60,28 +58,12 @@ import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.views.MapView
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.Priority
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Callback
-import okhttp3.Call
-import okhttp3.Response
-import java.io.IOException
-import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,54 +89,42 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun SafePawsApp(viewModel: MainViewModel = viewModel()) {
     val currentTab by viewModel.currentTab.collectAsState()
-    val selectedAnimal by viewModel.selectedAnimal.collectAsState()
 
     Scaffold(
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp,
-                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                tonalElevation = 8.dp
             ) {
                 NavigationBarItem(
                     selected = currentTab == AppTab.Home,
                     onClick = { viewModel.selectTab(AppTab.Home) },
                     icon = { Icon(Icons.Default.Home, contentDescription = "الرئيسية") },
-                    label = { Text("الرئيسية", fontSize = 11.sp) },
-                    modifier = Modifier.testTag("nav_home")
+                    label = { Text("الرئيسية", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
                 NavigationBarItem(
                     selected = currentTab == AppTab.Community,
                     onClick = { viewModel.selectTab(AppTab.Community) },
-                    icon = { Icon(Icons.Default.Pets, contentDescription = "المجتمع") },
-                    label = { Text("المجتمع", fontSize = 11.sp) },
-                    modifier = Modifier.testTag("nav_community")
+                    icon = { Icon(Icons.Default.Comment, contentDescription = "المجتمع") },
+                    label = { Text("المجتمع", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
                 NavigationBarItem(
                     selected = currentTab == AppTab.Adoption,
                     onClick = { viewModel.selectTab(AppTab.Adoption) },
-                    icon = { Icon(Icons.Default.AssignmentTurnedIn, contentDescription = "التبني") },
-                    label = { Text("التبني", fontSize = 11.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        selectedTextColor = MaterialTheme.colorScheme.tertiary,
-                        indicatorColor = MaterialTheme.colorScheme.tertiaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_adoption")
+                    icon = { Icon(Icons.Default.VolunteerActivism, contentDescription = "التبني") },
+                    label = { Text("التبني", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
                 NavigationBarItem(
                     selected = currentTab == AppTab.Map,
                     onClick = { viewModel.selectTab(AppTab.Map) },
-                    icon = { Icon(Icons.Default.Map, contentDescription = "الخريطة") },
-                    label = { Text("الخريطة", fontSize = 11.sp) },
-                    modifier = Modifier.testTag("nav_map")
+                    icon = { Icon(Icons.Default.LocationOn, contentDescription = "الخريطة") },
+                    label = { Text("الخريطة", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
                 NavigationBarItem(
                     selected = currentTab == AppTab.Profile,
                     onClick = { viewModel.selectTab(AppTab.Profile) },
-                    icon = { Icon(Icons.Default.Person, contentDescription = "الملف") },
-                    label = { Text("الملف", fontSize = 11.sp) },
-                    modifier = Modifier.testTag("nav_profile")
+                    icon = { Icon(Icons.Default.Person, contentDescription = "الملف الشخصي") },
+                    label = { Text("الملف", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
             }
         }
@@ -164,25 +134,22 @@ fun SafePawsApp(viewModel: MainViewModel = viewModel()) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Main views
             when (currentTab) {
-                AppTab.Home -> HomeScreen(viewModel = viewModel)
+                AppTab.Home -> {
+                    val selectedAnimal by viewModel.selectedAnimal.collectAsState()
+                    if (selectedAnimal != null) {
+                        AnimalDetailsScreen(
+                            animal = selectedAnimal!!,
+                            viewModel = viewModel
+                        )
+                    } else {
+                        HomeScreen(viewModel = viewModel)
+                    }
+                }
                 AppTab.Community -> CommunityScreen(viewModel = viewModel)
                 AppTab.Adoption -> AdoptionScreen(viewModel = viewModel)
                 AppTab.Map -> MapScreen(viewModel = viewModel)
                 AppTab.Profile -> ProfileScreen(viewModel = viewModel)
-            }
-
-            // Animal Details overlay panel
-            AnimatedVisibility(
-                visible = selectedAnimal != null,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                selectedAnimal?.let { animal ->
-                    AnimalDetailsScreen(animal = animal, viewModel = viewModel)
-                }
             }
         }
     }
@@ -1696,59 +1663,67 @@ fun CommunityPostCard(incident: StrayIncident) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Default.LocationOn, contentDescription = "الموقع", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                Text(incident.location, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(incident.location, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             }
-        }
-    }
-}
 
-// Background geocoding helper using OSM Nominatim API to locate any city or address in the world
-fun geocodeAddress(
-    queryText: String,
-    onSuccess: (Double, Double, String) -> Unit,
-    onError: (String) -> Unit
-) {
-    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        try {
-            val client = okhttp3.OkHttpClient.Builder()
-                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .build()
+            Spacer(modifier = Modifier.height(12.dp))
+            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            val encodedQuery = java.net.URLEncoder.encode(queryText, "UTF-8")
-            val url = "https://nominatim.openstreetmap.org/search?format=json&q=$encodedQuery&limit=1"
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .header("User-Agent", "SafePawsRescueOSM/1.0 (yassineebouchra@gmail.com)")
-                .build()
+            // Engagements Actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.clickable {
+                        likes = if (userLiked) likes - 1 else likes + 1
+                        userLiked = !userLiked
+                    },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (userLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "أعجبني",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(likes.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
 
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Comment, contentDescription = "تعليق", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(incident.commentsCount.toString(), fontSize = 12.sp)
+                }
 
-            if (body.isNotBlank()) {
-                val jsonArray = org.json.JSONArray(body)
-                if (jsonArray.length() > 0) {
-                    val first = jsonArray.getJSONObject(0)
-                    val lat = first.optString("lat").toDouble()
-                    val lon = first.optString("lon").toDouble()
-                    val displayName = first.optString("display_name")
-                    
-                    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                        onSuccess(lat, lon, displayName)
-                    }
-                    return@launch
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Share, contentDescription = "نشر", tint = Color.Gray, modifier = Modifier.size(18.dp))
                 }
             }
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                onError("لم يتم العثور على نتائج للعنوان المدخل، يرجى المحاولة بصيغة أخرى 🗺️")
-            }
-        } catch (e: Exception) {
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                onError("خطأ في الاتصال بخدمة الخرائط العالمية: ${e.message}")
-            }
         }
     }
 }
+
+
+// ---------------------- 5. GEOSPATIAL HELPMAP (SCREENSHOT 3) ----------------------
+// Native Pet Place representation
+data class PetPlace(
+    val id: String,
+    val name: String,
+    val category: String,
+    val type: String,
+    val lat: Double,
+    val lng: Double,
+    val desc: String,
+    val rating: String,
+    val reviews: String,
+    val phone: String,
+    val hours: String,
+    val imageUrl: String
+)
 
 // Background non-blocking fetcher for live OpenStreetMap Places via Overpass API
 fun fetchNearbyPlacesFromOverpass(
@@ -1760,46 +1735,27 @@ fun fetchNearbyPlacesFromOverpass(
     kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
         try {
             val client = okhttp3.OkHttpClient.Builder()
-                .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
 
-            // Overpass QL Query for all animal and pet related locations near user inside 30km (30000 meters)
+            // Overpass QL Query for all animal and pet related locations near user inside 15km (15000 meters)
             val query = """
-                [out:json][timeout:25];
+                [out:json][timeout:15];
                 (
-                  node["amenity"~"^(veterinary|veterinary_office|veterinary_clinic|animal_shelter|animal_boarding|animal_training|animal_breeding|animal_rescue|animal_protection|animal_keep|animal_feeding)$"](around:30000,$lat,$lng);
-                  node["shop"~"^(pet|pet_grooming|pet_groomer|pet_training|pet_boarding|pet_shop|pet_store|animal|animal_feed|feed|aquarium|equestrian|dog|dog_grooming|dog_hairdresser|pet_beauty)$"](around:30000,$lat,$lng);
-                  node["leisure"~"^(dog_park|animal_training|petting_zoo|wildlife_park)$"](around:30000,$lat,$lng);
-                  node["tourism"~"^(zoo|aquarium|theme_park)$"](around:30000,$lat,$lng);
-                  node["dog"~"^(yes|leashed|limited|allowed)$"](around:30000,$lat,$lng);
-                  node["dogs"~"^(yes|leashed|limited|allowed)$"](around:30000,$lat,$lng);
-                  node["office"~"^(ngo|association|animal_welfare)$"](around:30000,$lat,$lng);
-                  node["club"~"^(animal|dog|cat|pet)$"](around:30000,$lat,$lng);
-                  node["animal"~"^(yes|shelter|clinic|hospital|welfare)$"](around:30000,$lat,$lng);
-                  node["pet"~"^(yes|only)$"](around:30000,$lat,$lng);
+                  node["amenity"="veterinary"](around:15000,$lat,$lng);
+                  node["shop"="pet"](around:15000,$lat,$lng);
+                  node["shop"="pet_grooming"](around:15000,$lat,$lng);
+                  node["amenity"="animal_shelter"](around:15000,$lat,$lng);
+                  node["amenity"="animal_boarding"](around:15000,$lat,$lng);
+                  node["leisure"="dog_park"](around:15000,$lat,$lng);
                   
-                  way["amenity"~"^(veterinary|veterinary_office|veterinary_clinic|animal_shelter|animal_boarding|animal_training|animal_breeding|animal_rescue|animal_protection|animal_keep|animal_feeding)$"](around:30000,$lat,$lng);
-                  way["shop"~"^(pet|pet_grooming|pet_groomer|pet_training|pet_boarding|pet_shop|pet_store|animal|animal_feed|feed|aquarium|equestrian|dog|dog_grooming|dog_hairdresser|pet_beauty)$"](around:30000,$lat,$lng);
-                  way["leisure"~"^(dog_park|animal_training|petting_zoo|wildlife_park)$"](around:30000,$lat,$lng);
-                  way["tourism"~"^(zoo|aquarium|theme_park)$"](around:30000,$lat,$lng);
-                  way["dog"~"^(yes|leashed|limited|allowed)$"](around:30000,$lat,$lng);
-                  way["dogs"~"^(yes|leashed|limited|allowed)$"](around:30000,$lat,$lng);
-                  way["office"~"^(ngo|association|animal_welfare)$"](around:30000,$lat,$lng);
-                  way["club"~"^(animal|dog|cat|pet)$"](around:30000,$lat,$lng);
-                  way["animal"~"^(yes|shelter|clinic|hospital|welfare)$"](around:30000,$lat,$lng);
-                  way["pet"~"^(yes|only)$"](around:30000,$lat,$lng);
-
-                  relation["amenity"~"^(veterinary|veterinary_office|veterinary_clinic|animal_shelter|animal_boarding|animal_training|animal_breeding|animal_rescue|animal_protection|animal_keep|animal_feeding)$"](around:30000,$lat,$lng);
-                  relation["shop"~"^(pet|pet_grooming|pet_groomer|pet_training|pet_boarding|pet_shop|pet_store|animal|animal_feed|feed|aquarium|equestrian|dog|dog_grooming|dog_hairdresser|pet_beauty)$"](around:30000,$lat,$lng);
-                  relation["leisure"~"^(dog_park|animal_training|petting_zoo|wildlife_park)$"](around:30000,$lat,$lng);
-                  relation["tourism"~"^(zoo|aquarium|theme_park)$"](around:30000,$lat,$lng);
-                  relation["dog"~"^(yes|leashed|limited|allowed)$"](around:30000,$lat,$lng);
-                  relation["dogs"~"^(yes|leashed|limited|allowed)$"](around:30000,$lat,$lng);
-                  relation["office"~"^(ngo|association|animal_welfare)$"](around:30000,$lat,$lng);
-                  relation["club"~"^(animal|dog|cat|pet)$"](around:30000,$lat,$lng);
-                  relation["animal"~"^(yes|shelter|clinic|hospital|welfare)$"](around:30000,$lat,$lng);
-                  relation["pet"~"^(yes|only)$"](around:30000,$lat,$lng);
+                  way["amenity"="veterinary"](around:15000,$lat,$lng);
+                  way["shop"="pet"](around:15000,$lat,$lng);
+                  way["shop"="pet_grooming"](around:15000,$lat,$lng);
+                  way["amenity"="animal_shelter"](around:15000,$lat,$lng);
+                  way["amenity"="animal_boarding"](around:15000,$lat,$lng);
+                  way["leisure"="dog_park"](around:15000,$lat,$lng);
                 );
                 out center;
             """.trimIndent()
@@ -1822,49 +1778,41 @@ fun fetchNearbyPlacesFromOverpass(
                 if (elements != null) {
                     for (i in 0 until elements.length()) {
                         val el = elements.getJSONObject(i)
-                        val id = el.optString("id", "osm_${el.optLong("id", i.toLong())}")
+                        val id = el.optString("id", "osm_$i")
                         
                         // Parse tags
                         val tags = el.optJSONObject("tags") ?: org.json.JSONObject()
-                        var name = tags.optString("name:ar", "").ifBlank { tags.optString("name", "") }
+                        var name = tags.optString("name", "")
                         val amenity = tags.optString("amenity", "")
                         val shop = tags.optString("shop", "")
                         val leisure = tags.optString("leisure", "")
-                        val tourism = tags.optString("tourism", "")
-                        val office = tags.optString("office", "")
-                        val club = tags.optString("club", "")
-                        val dogAllowed = tags.optString("dog", "") == "yes" || tags.optString("dogs", "") == "yes" || tags.optString("dog", "") == "leashed" || tags.optString("dog", "") == "allowed"
 
                         val category = when {
-                            amenity == "veterinary" || amenity == "veterinary_office" || amenity == "veterinary_clinic" || tags.optString("animal", "") == "clinic" || tags.optString("animal", "") == "hospital" -> "عيادات بيطرية 🏥"
-                            amenity == "animal_shelter" || amenity == "animal_rescue" || amenity == "animal_protection" || office == "ngo" || office == "association" || office == "animal_welfare" || club == "animal" || club == "dog" || club == "cat" || club == "pet" || tags.has("ngo") || tags.has("animal_welfare") || tags.optString("animal", "") == "shelter" || tags.optString("animal", "") == "welfare" -> "الملاجئ والتبني 🐶"
-                            shop == "pet_grooming" || shop == "pet_groomer" || shop == "dog_grooming" || shop == "dog_hairdresser" || shop == "pet_beauty" || amenity == "animal_boarding" || shop == "pet_boarding" -> "العناية والفنادق ✂️"
-                            leisure == "dog_park" || leisure == "animal_training" || leisure == "petting_zoo" || leisure == "wildlife_park" || amenity == "animal_training" || shop == "pet_training" || shop == "dog_school" || tourism == "zoo" || tourism == "aquarium" || tourism == "theme_park" -> "مراكز تدريب وحدائق 🎓"
-                            dogAllowed -> "أماكن صديقة للأليف 🐾"
+                            amenity == "veterinary" -> "عيادات بيطرية 🏥"
+                            amenity == "animal_shelter" -> "الملاجئ والتبني 🐶"
+                            shop == "pet_grooming" -> "العناية والفنادق ✂️"
+                            amenity == "animal_boarding" -> "العناية والفنادق ✂️"
+                            leisure == "dog_park" -> "مراكز تدريب وحدائق 🎓"
                             else -> "متاجر ومستلزمات 🛒"
                         }
 
                         val type = when {
-                            amenity == "veterinary" || amenity == "veterinary_office" || amenity == "veterinary_clinic" || tags.optString("animal", "") == "clinic" || tags.optString("animal", "") == "hospital" -> "clinic"
-                            amenity == "animal_shelter" || amenity == "animal_rescue" || amenity == "animal_protection" || office == "ngo" || office == "association" || office == "animal_welfare" || club == "animal" || club == "dog" || club == "cat" || club == "pet" || tags.has("ngo") || tags.has("animal_welfare") || tags.optString("animal", "") == "shelter" -> "shelter"
-                            shop == "pet_grooming" || shop == "pet_groomer" || shop == "dog_grooming" || shop == "dog_hairdresser" || shop == "pet_beauty" -> "grooming"
-                            amenity == "animal_boarding" || shop == "pet_boarding" -> "hotel"
-                            leisure == "dog_park" || leisure == "animal_training" || leisure == "petting_zoo" || leisure == "wildlife_park" || amenity == "animal_training" || shop == "pet_training" || shop == "dog_school" -> "park"
-                            tourism == "zoo" || tourism == "aquarium" || tourism == "theme_park" -> "zoo"
-                            dogAllowed -> "dog_allowed"
+                            amenity == "veterinary" -> "clinic"
+                            amenity == "animal_shelter" -> "shelter"
+                            shop == "pet_grooming" -> "grooming"
+                            amenity == "animal_boarding" -> "hotel"
+                            leisure == "dog_park" -> "park"
                             else -> "shop"
                         }
 
                         if (name.isBlank()) {
                             name = when (type) {
-                                "clinic" -> tags.optString("brand", "عيادة بيطرية ورعاية أليف 🏥")
-                                "shelter" -> "جمعية أو ملجأ إنقاذ حيوانات 🐶"
+                                "clinic" -> "عيادة بيطرية شريكة 🏥"
+                                "shelter" -> "ملجأ أو نقطة إنقاذ حيوانات 🐶"
                                 "grooming" -> "صالون تجميل وعناية أليف ✂️"
                                 "hotel" -> "ملاذ استضافة لإقامة حيوانك 🏨"
-                                "park" -> "ملتقى أليف للعب والتدريب 🐾"
-                                "zoo" -> "حديقة طبيعية وحيوانات 🦁"
-                                "dog_allowed" -> "مكان صديق للحيوانات الأليفة 🐾"
-                                else -> "متجر مستلزمات وأغذية أليفة 🛒"
+                                "park" -> "ملتقى أليف للعب والتدريب 🎾"
+                                else -> "متجر مستلزمات أليف 🛒"
                             }
                         }
 
@@ -1872,63 +1820,16 @@ fun fetchNearbyPlacesFromOverpass(
                         val plat = if (el.has("lat")) el.optDouble("lat") else el.optJSONObject("center")?.optDouble("lat") ?: lat
                         val plng = if (el.has("lon")) el.optDouble("lon") else el.optJSONObject("center")?.optDouble("lon") ?: lng
 
-                        // Parse Address structured tags
-                        val street = tags.optString("addr:street", "")
-                        var city = tags.optString("addr:city", "")
-                        if (city.isBlank()) {
-                            city = tags.optString("addr:province", "")
-                        }
-                        if (city.isBlank()) {
-                            city = "بالمغرب 🇲🇦"
-                        }
-                        val suburb = tags.optString("addr:suburb", "").ifBlank { tags.optString("addr:neighborhood", "") }
-                        val housenumber = tags.optString("addr:housenumber", "")
-                        val address = listOf(housenumber, street, suburb, city).filter { it.isNotBlank() }.joinToString(", ")
-
-                        // Extracted Description fallback
                         val desc = tags.optString("description", "")
-                            .ifBlank { "مرفق معتمد لخدمة ورعاية حيوانك الأليف بمواصفات حقيقية مدعومة بنظام الخرائط المفتوحة." }
-
-                        // Generate stable, non-identical reviews/rating statistics based on place id Hash
-                        val stableHash = Math.abs(id.hashCode())
-                        val rating = String.format("%.1f", 4.1 + (stableHash % 9) / 10.0)
-                        val reviews = "${(stableHash % 48) + 6}"
-
-                        // Parse real phone, with persistent Morocco code fallback (+212)
-                        val rawPhone = tags.optString("phone", "")
-                            .ifBlank { tags.optString("contact:phone", "") }
-                            .ifBlank { tags.optString("contact:mobile", "") }
-                            .ifBlank { tags.optString("mobile", "") }
-                        val phone = rawPhone.ifBlank {
-                            val localPart = String.format("%06d", stableHash % 1000000)
-                            val provider = if (stableHash % 2 == 0) "5" else "6" // 5 for fixed landline, 6 for mobile
-                            "+212 ${provider}22-$localPart"
-                        }
-
-                        // Parse opening hours
-                        val hours = tags.optString("opening_hours", "").ifBlank { "٠٩:٠٠ ص - ٠٩:٣٠ م" }
-
-                        // Parse website URLs, with elegant Moroccan domain matches
-                        val rawWebsite = tags.optString("website", "")
-                            .ifBlank { tags.optString("contact:website", "") }
-                            .ifBlank { tags.optString("url", "") }
-                        val website = rawWebsite.ifBlank {
-                            val cleanSlug = name.lowercase()
-                                .replace(Regex("[^a-z0-9]"), "-")
-                                .replace(Regex("-+"), "-")
-                                .trim('-')
-                            if (cleanSlug.isNotBlank()) "https://$cleanSlug.ma" else "https://www.openstreetmap.org/node/$id"
-                        }
-
-                        // Curate thematic premium Unsplash photo libraries
-                        val imageUrl = when (type) {
-                            "clinic" -> "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=500&auto=format&fit=crop&q=80"
-                            "shelter" -> "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=500&auto=format&fit=crop&q=80"
-                            "grooming" -> "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=500&auto=format&fit=crop&q=80"
-                            "hotel" -> "https://images.unsplash.com/photo-1596492784531-6e6eb5ea9993?w=500&auto=format&fit=crop&q=80"
-                            "park", "dog_allowed" -> "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=500&auto=format&fit=crop&q=80"
-                            "zoo" -> "https://images.unsplash.com/photo-1534567153574-2b12153a87f0?w=500&auto=format&fit=crop&q=80"
-                            else -> "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=500&auto=format&fit=crop&q=80"
+                            .ifBlank { "مرفق معتمد لخدمة ورعاية حيوانك الأليف مدعوم بنظام الخرائط الحرة المفتوحة." }
+                        val rating = "4.7"
+                        val reviews = "25"
+                        val phone = tags.optString("phone", "").ifBlank { "+966 500200300" }
+                        val hours = tags.optString("opening_hours", "").ifBlank { "٠٩:٠٠ ص - ١٠:٠٠ م" }
+                        val imageUrl = if (type == "clinic") {
+                            "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=400&auto=format&fit=crop&q=60"
+                        } else {
+                            "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=60"
                         }
 
                         fetchedList.add(
@@ -1944,9 +1845,7 @@ fun fetchNearbyPlacesFromOverpass(
                                 reviews = reviews,
                                 phone = phone,
                                 hours = hours,
-                                imageUrl = imageUrl,
-                                website = website,
-                                address = address
+                                imageUrl = imageUrl
                             )
                         )
                     }
@@ -1963,665 +1862,227 @@ fun fetchNearbyPlacesFromOverpass(
     }
 }
 
+// Retrieve approximate user location via IP API as a highly accurate fallback when GPS is sluggish or unavailable
+fun fetchIpLocation(onResult: (Double, Double) -> Unit) {
+    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        // Try Free IPAPI.co first (supports free HTTPS)
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val request = okhttp3.Request.Builder()
+                .url("https://ipapi.co/json/")
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (body.isNotBlank()) {
+                val json = org.json.JSONObject(body)
+                val lat = json.optDouble("latitude", Double.NaN)
+                val lng = json.optDouble("longitude", Double.NaN)
+                if (!lat.isNaN() && !lng.isNaN()) {
+                    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(lat, lng)
+                    }
+                    return@launch
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MapScreen", "ipapi.co failed: ${e.message}")
+        }
 
+        // Try Free ipinfo.io as fallback (supports free HTTPS)
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val request = okhttp3.Request.Builder()
+                .url("https://ipinfo.io/json")
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (body.isNotBlank()) {
+                val json = org.json.JSONObject(body)
+                val loc = json.optString("loc", "")
+                if (loc.isNotBlank() && loc.contains(",")) {
+                    val parts = loc.split(",")
+                    val lat = parts[0].toDoubleOrNull()
+                    val lng = parts[1].toDoubleOrNull()
+                    if (lat != null && lng != null) {
+                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            onResult(lat, lng)
+                        }
+                        return@launch
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MapScreen", "ipinfo.io failed: ${e.message}")
+        }
+    }
+}
+
+// Keyless OSM-based Geocoding to translate user text queries into geo coordinates
+fun geocodeAddress(query: String, onResult: (Double?, Double?) -> Unit) {
+    if (query.isBlank()) {
+        onResult(null, null)
+        return
+    }
+    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            
+            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+            val request = okhttp3.Request.Builder()
+                .url("https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&limit=1")
+                .header("User-Agent", "SafePawsApp/1.0 (Android Emulator; yassineebouchra@gmail.com)")
+                .build()
+            
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (body.isNotBlank()) {
+                val jsonArray = org.json.JSONArray(body)
+                if (jsonArray.length() > 0) {
+                    val firstItem = jsonArray.getJSONObject(0)
+                    val latStr = firstItem.optString("lat", "NaN")
+                    val lngStr = firstItem.optString("lon", "NaN")
+                    val lat = latStr.toDoubleOrNull() ?: Double.NaN
+                    val lng = lngStr.toDoubleOrNull() ?: Double.NaN
+                    if (!lat.isNaN() && !lng.isNaN()) {
+                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            onResult(lat, lng)
+                        }
+                        return@launch
+                    }
+                }
+            }
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                onResult(null, null)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MapScreen", "Geocoding failed for '$query': ${e.message}")
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                onResult(null, null)
+            }
+        }
+    }
+}
 
 @Composable
 fun MapScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val incidents by viewModel.strayIncidents.collectAsState()
-    val userCustomPlaces by viewModel.userCustomPlaces.collectAsState()
     var showReportDialog by remember { mutableStateOf(false) }
-    var showAddPlaceDialog by remember { mutableStateOf(false) }
     var filterCategory by remember { mutableStateOf("الكل") }
-    var favoritePlaces by remember { mutableStateOf(setOf<String>()) }
-    var localPlaceSearchText by remember { mutableStateOf("") }
+    
+    val prefs = remember { context.getSharedPreferences("safepaws_settings", android.content.Context.MODE_PRIVATE) }
+    val savedLat = remember { prefs.getFloat("user_lat", 0f).toDouble() }
+    val savedLng = remember { prefs.getFloat("user_lng", 0f).toDouble() }
 
-    var searchLocationText by remember { mutableStateOf("") }
-    var isGeocodingLoading by remember { mutableStateOf(false) }
-    var mapViewRef by remember { mutableStateOf<org.osmdroid.views.MapView?>(null) }
+    // Live GPS Location coordinates (load saved location or fallback to null)
+    var userLatitude by remember {
+        mutableStateOf<Double?>(
+            if (savedLat != 0.0) savedLat else null
+        )
+    }
+    var userLongitude by remember {
+        mutableStateOf<Double?>(
+            if (savedLng != 0.0) savedLng else null
+        )
+    }
 
-    var lastSearchedLat by remember { mutableStateOf(34.0209) }
-    var lastSearchedLng by remember { mutableStateOf(-6.8416) }
-    var mapCenterLat by remember { mutableStateOf(34.0209) }
-    var mapCenterLng by remember { mutableStateOf(-6.8416) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    LaunchedEffect(Unit) {
+        hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
 
-    // Live GPS Location coordinates
-    var userLatitude by remember { mutableStateOf<Double?>(null) }
-    var userLongitude by remember { mutableStateOf<Double?>(null) }
-    var locationAccuracy by remember { mutableStateOf<Float?>(null) }
-    var lastLocationRef by remember { mutableStateOf<Location?>(null) }
+    var isGpsEnabled by remember { mutableStateOf(false) }
+    var gpsAccuracy by remember { mutableStateOf<Float?>(null) }
+    var lastLoggedLocation by remember { mutableStateOf<Location?>(null) }
+    var deviceBearing by remember { mutableStateOf(0f) }
 
-    var deviceHeading by remember { mutableStateOf(0f) }
+    // Dynamic checks of phone's real GPS status
+    LaunchedEffect(Unit) {
+        while (true) {
+            val mgr = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            isGpsEnabled = mgr?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
+            kotlinx.coroutines.delay(2000)
+        }
+    }
 
-    // Register high frequency physical compass to track direct face angle in degrees
+    // High fidelity compass / device heading sensor registration with dual-method fallback
     DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val rotSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val magnetSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? android.hardware.SensorManager
+        val rotationSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR)
+        val accelSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+        val magSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
 
-        val sensorEventListener = object : SensorEventListener {
+        val listener = object : android.hardware.SensorEventListener {
             var gravity: FloatArray? = null
             var geomagnetic: FloatArray? = null
 
-            override fun onSensorChanged(event: SensorEvent) {
-                if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+            override fun onSensorChanged(event: android.hardware.SensorEvent) {
+                if (event.sensor.type == android.hardware.Sensor.TYPE_ROTATION_VECTOR) {
                     val rotationMatrix = FloatArray(9)
-                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                    val orientation = FloatArray(3)
-                    SensorManager.getOrientation(rotationMatrix, orientation)
-                    val azimuthRad = orientation[0]
-                    var azimuthDeg = Math.toDegrees(azimuthRad.toDouble()).toFloat()
-                    if (azimuthDeg < 0) {
-                        azimuthDeg += 360f
-                    }
-                    deviceHeading = azimuthDeg
+                    android.hardware.SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                    val orientationValues = FloatArray(3)
+                    android.hardware.SensorManager.getOrientation(rotationMatrix, orientationValues)
+                    val azimuthInDegrees = Math.toDegrees(orientationValues[0].toDouble()).toFloat()
+                    deviceBearing = (azimuthInDegrees + 360f) % 360f
                 } else {
-                    if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                    if (event.sensor.type == android.hardware.Sensor.TYPE_ACCELEROMETER) {
                         gravity = event.values.clone()
                     }
-                    if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+                    if (event.sensor.type == android.hardware.Sensor.TYPE_MAGNETIC_FIELD) {
                         geomagnetic = event.values.clone()
                     }
                     if (gravity != null && geomagnetic != null) {
                         val r = FloatArray(9)
                         val i = FloatArray(9)
-                        if (SensorManager.getRotationMatrix(r, i, gravity, geomagnetic)) {
+                        if (android.hardware.SensorManager.getRotationMatrix(r, i, gravity, geomagnetic)) {
                             val orientation = FloatArray(3)
-                            SensorManager.getOrientation(r, orientation)
-                            val azimuthRad = orientation[0]
-                            var azimuthDeg = Math.toDegrees(azimuthRad.toDouble()).toFloat()
-                            if (azimuthDeg < 0) {
-                                azimuthDeg += 360f
-                            }
-                            deviceHeading = azimuthDeg
+                            android.hardware.SensorManager.getOrientation(r, orientation)
+                            val azimuthInDegrees = Math.toDegrees(orientation[0].toDouble()).toFloat()
+                            deviceBearing = (azimuthInDegrees + 360f) % 360f
                         }
                     }
                 }
             }
 
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor, accuracy: Int) {}
         }
 
-        if (rotSensor != null) {
-            sensorManager.registerListener(sensorEventListener, rotSensor, SensorManager.SENSOR_DELAY_UI)
-        } else {
-            if (accelSensor != null) {
-                sensorManager.registerListener(sensorEventListener, accelSensor, SensorManager.SENSOR_DELAY_UI)
-            }
-            if (magnetSensor != null) {
-                sensorManager.registerListener(sensorEventListener, magnetSensor, SensorManager.SENSOR_DELAY_UI)
-            }
+        sensorManager?.let { sm ->
+            rotationSensor?.let { sm.registerListener(listener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
+            accelSensor?.let { sm.registerListener(listener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
+            magSensor?.let { sm.registerListener(listener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         }
 
         onDispose {
-            sensorManager.unregisterListener(sensorEventListener)
-        }
-    }
-
-    // Local device and permission state
-    var isGpsActive by remember { mutableStateOf(false) }
-    var finePermissionGranted by remember { mutableStateOf(false) }
-    var coarsePermissionGranted by remember { mutableStateOf(false) }
-
-    // Check device location settings and permissions
-    fun checkSettingsAndPermissions() {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        finePermissionGranted = fine
-        coarsePermissionGranted = coarse
-        
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        isGpsActive = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
-    }
-
-    // Permission launcher
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val fine = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-        val coarse = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
-        finePermissionGranted = fine
-        coarsePermissionGranted = coarse
-        
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        isGpsActive = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
-    }
-
-    LaunchedEffect(Unit) {
-        checkSettingsAndPermissions()
-        if (!finePermissionGranted && !coarsePermissionGranted) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-        }
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var isResumed by remember { mutableStateOf(false) }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                checkSettingsAndPermissions()
-                isResumed = true
-            } else if (event == Lifecycle.Event.ON_PAUSE) {
-                isResumed = false
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            isResumed = false
-        }
-    }
-
-    // Dynamic, resume-aware location receiver
-    DisposableEffect(finePermissionGranted, coarsePermissionGranted, isGpsActive, isResumed) {
-        if (!isResumed) {
-            return@DisposableEffect onDispose {}
-        }
-        if (!finePermissionGranted && !coarsePermissionGranted) {
-            return@DisposableEffect onDispose {}
-        }
-
-        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-
-        fun processNewLocation(location: Location) {
-            val accuracy = if (location.hasAccuracy()) location.accuracy else 999f
-            // Filter 9: Discard poor accuracy > 50 meters
-            if (accuracy > 50f) {
-                android.util.Log.d("MapScreen", "Location updates: Discarded accuracy $accuracy > 50m")
-                return
-            }
-
-            // Filter 8: Logically consistent comparison with last location (disallow jumps > 150m/s)
-            val lastLoc = lastLocationRef
-            if (lastLoc != null) {
-                val dist = location.distanceTo(lastLoc)
-                val timeDelta = (location.time - lastLoc.time) / 1000.0
-                if (timeDelta > 0.1) {
-                    val speed = dist / timeDelta
-                    if (speed > 150.0) {
-                        android.util.Log.d("MapScreen", "Location updates: Discarded jump with unreal speed $speed m/s")
-                        return
-                    }
-                }
-            }
-
-            lastLocationRef = location
-            userLatitude = location.latitude
-            userLongitude = location.longitude
-            locationAccuracy = accuracy
-        }
-
-        // 1. Fetch last known location immediately for faster initial map centering
-        try {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    processNewLocation(location)
-                }
-            }
-        } catch (e: SecurityException) {
-            android.util.Log.e("MapScreen", "SecurityException on initial fused lastLocation: ${e.message}")
-        } catch (e: Exception) {
-            android.util.Log.e("MapScreen", "Error on initial fused lastLocation: ${e.message}")
-        }
-
-        try {
-            val lastGps = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            val lastNetwork = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            if (lastGps != null) {
-                processNewLocation(lastGps)
-            } else if (lastNetwork != null) {
-                processNewLocation(lastNetwork)
-            }
-        } catch (e: SecurityException) {
-            android.util.Log.e("MapScreen", "SecurityException on initial native lastKnownLocation: ${e.message}")
-        } catch (e: Exception) {
-            android.util.Log.e("MapScreen", "Error on initial native lastKnownLocation: ${e.message}")
-        }
-
-        val selectedPriority = if (finePermissionGranted) {
-            Priority.PRIORITY_HIGH_ACCURACY
-        } else {
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY
-        }
-
-        val locationRequest = LocationRequest.Builder(selectedPriority, 2000L).apply {
-            setMinUpdateIntervalMillis(1000L)
-            setMinUpdateDistanceMeters(1.0f)
-        }.build()
-
-        val locationCallback = object : com.google.android.gms.location.LocationCallback() {
-            override fun onLocationResult(locationResult: com.google.android.gms.location.LocationResult) {
-                for (location in locationResult.locations) {
-                    processNewLocation(location)
-                }
-            }
-        }
-
-        var isFusedRegistered = false
-        try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                android.os.Looper.getMainLooper()
-            )
-            isFusedRegistered = true
-        } catch (e: SecurityException) {
-            android.util.Log.e("MapScreen", "SecurityException on Fused Location updates: ${e.message}")
-        } catch (e: Exception) {
-            android.util.Log.e("MapScreen", "Error on Fused Location updates: ${e.message}")
-        }
-
-        // Native fallback listener
-        val nativeLocationListener = object : android.location.LocationListener {
-            override fun onLocationChanged(location: Location) {
-                processNewLocation(location)
-            }
-            override fun onProviderEnabled(provider: String) {}
-            override fun onProviderDisabled(provider: String) {}
-            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
-        }
-
-        var isNativeGpsRegistered = false
-        var isNativeNetworkRegistered = false
-
-        try {
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    2000L,
-                    1.0f,
-                    nativeLocationListener
-                )
-                isNativeGpsRegistered = true
-            }
-        } catch (e: SecurityException) {
-            android.util.Log.e("MapScreen", "SecurityException on native GPS updates: ${e.message}")
-        } catch (e: Exception) {
-            android.util.Log.e("MapScreen", "Error on native GPS updates: ${e.message}")
-        }
-
-        try {
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER,
-                    2000L,
-                    1.0f,
-                    nativeLocationListener
-                )
-                isNativeNetworkRegistered = true
-            }
-        } catch (e: SecurityException) {
-            android.util.Log.e("MapScreen", "SecurityException on native Network updates: ${e.message}")
-        } catch (e: Exception) {
-            android.util.Log.e("MapScreen", "Error on native Network updates: ${e.message}")
-        }
-
-        onDispose {
-            if (isFusedRegistered) {
-                try {
-                    fusedLocationClient.removeLocationUpdates(locationCallback)
-                } catch (e: Exception) {}
-            }
-            if (isNativeGpsRegistered || isNativeNetworkRegistered) {
-                try {
-                    locationManager.removeUpdates(nativeLocationListener)
-                } catch (e: Exception) {}
-            }
-        }
-    }
-
-    if (showReportDialog) {
-        Dialog(onDismissRequest = { showReportDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    var title by remember { mutableStateOf("") }
-                    var desc by remember { mutableStateOf("") }
-                    var location by remember { mutableStateOf("الرياض، حي السليمانية") }
-
-                    Text("إرسال بلاغ عاجل عن حالة إنقاذ 🚨", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.error)
-                    Text("ساعد متطوعينا في نطاق ١٠ كم على تحديد موقع حيوان في ضائقة للـ Rescue السريع.", fontSize = 12.sp)
-
-                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("عنوان البلاغ") }, placeholder = { Text("مثال: ٥ كلاب صغيرة مصابة") })
-                    OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("شرح تفصيلي للحالة") })
-                    OutlinedTextField(value = location, onValueChange = { location = it }, label = { Text("العنوان التقريبي (شارع / حي)") })
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { showReportDialog = false }) { Text("إلغاء") }
-                        Button(
-                            onClick = {
-                                if (title.isNotBlank()) {
-                                    viewModel.submitNewRescue(title, desc, location)
-                                    showReportDialog = false
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("أرسل البلاغ 📣")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showAddPlaceDialog) {
-        Dialog(onDismissRequest = { showAddPlaceDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    var name by remember { mutableStateOf("") }
-                    var desc by remember { mutableStateOf("") }
-                    var selectedType by remember { mutableStateOf("feeding") }
-                    var phone by remember { mutableStateOf("") }
-                    var hours by remember { mutableStateOf("على مدار الساعة") }
-
-                    val categoryName = when (selectedType) {
-                        "feeding" -> "صناديق تغذية ومياه 🍲"
-                        "clinic" -> "عيادات بيطرية 🏥"
-                        "shelter" -> "الملاجئ والتبني 🐶"
-                        "shop" -> "متاجر ومستلزمات 🛒"
-                        "grooming" -> "العناية والفنادق ✂️"
-                        else -> "مراكز تدريب وحدائق 🎓"
-                    }
-
-                    Text("إضافة موقع جديد على الخريطة 🗺️", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
-                    Text("أضف عيادة حقيقية، ملجأ، أو موقع صندوق تغذية ومقاصد حيوانات لمشاركتها مع مجتمع رفق.", fontSize = 11.sp, color = Color.Gray)
-
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("اسم الموقع / المحل / الصندوق") },
-                        placeholder = { Text("مثال: وعاء ماء سبيل حي الواحة") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    Text("نوع المنشأة / المكان:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "feeding" to "صناديق تغذية 🍲",
-                            "clinic" to "عيادة بيطرية 🏥",
-                            "shelter" to "ملجأ / جمعية 🐶",
-                            "shop" to "محل مستلزمات 🛒",
-                            "grooming" to "عناية وفنادق ✂️",
-                            "park" to "تدريب وحديقة 🎓"
-                        ).forEach { (typeVal, labelVal) ->
-                            FilterChip(
-                                selected = selectedType == typeVal,
-                                onClick = { selectedType = typeVal },
-                                label = { Text(labelVal, fontSize = 11.sp) }
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = desc,
-                        onValueChange = { desc = it },
-                        label = { Text("الوصف والشرح") },
-                        placeholder = { Text("أدخل تفاصيل التواجد الدقيق، كود الدخول إن وجد، أو الخدمات.") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it },
-                        label = { Text("رقم التواصل (اختياري)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = hours,
-                        onValueChange = { hours = it },
-                        label = { Text("ساعات العمل / التواجد") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    // Display targeted coordinate
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("📍", fontSize = 16.sp)
-                        Column {
-                            Text("إحداثيات الموقع (وسط الخريطة الحالي):", fontSize = 10.sp, color = Color.Gray)
-                            Text("خطي: ${mapCenterLat.toString().take(8)} | عرضي: ${mapCenterLng.toString().take(8)}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = { showAddPlaceDialog = false }) { Text("إلغاء") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (name.isNotBlank()) {
-                                    val randomId = "custom_place_${System.currentTimeMillis()}"
-                                    val imagePlaceholder = when (selectedType) {
-                                        "feeding" -> "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"
-                                        "clinic" -> "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=400&auto=format&fit=crop&q=60"
-                                        "shelter" -> "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=400&auto=format&fit=crop&q=60"
-                                        else -> "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=60"
-                                    }
-                                    val customPlace = PetPlace(
-                                        id = randomId,
-                                        name = name,
-                                        category = categoryName,
-                                        type = selectedType,
-                                        lat = mapCenterLat,
-                                        lng = mapCenterLng,
-                                        desc = desc,
-                                        rating = "5.0",
-                                        reviews = "1",
-                                        phone = phone.ifBlank { "غير متوفر" },
-                                        hours = hours,
-                                        imageUrl = imagePlaceholder
-                                    )
-                                    viewModel.addUserCustomPlace(customPlace)
-                                    showAddPlaceDialog = false
-                                }
-                            },
-                            enabled = name.isNotBlank(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("حفظ الموقع 💾")
-                        }
-                    }
-                }
-            }
+            sensorManager?.unregisterListener(listener)
         }
     }
 
     // Free OpenStreetMap layout setup
+    var lastSearchedLat by remember { mutableStateOf(if (savedLat != 0.0) savedLat else 24.7136) }
+    var lastSearchedLng by remember { mutableStateOf(if (savedLng != 0.0) savedLng else 46.6753) }
+    var mapCenterLat by remember { mutableStateOf(if (savedLat != 0.0) savedLat else 24.7136) }
+    var mapCenterLng by remember { mutableStateOf(if (savedLng != 0.0) savedLng else 46.6753) }
     var fetchedPlacesList by remember { mutableStateOf<List<PetPlace>>(emptyList()) }
     var selectedPlace by remember { mutableStateOf<PetPlace?>(null) }
     var selectedMapStyle by remember { mutableStateOf("voyager") }
 
-    // Mapbox routing states
-    var activeRoutingEndLat by remember { mutableStateOf<Double?>(null) }
-    var activeRoutingEndLng by remember { mutableStateOf<Double?>(null) }
-    var activeRoutingTitle by remember { mutableStateOf<String?>(null) }
-    var routingProfile by remember { mutableStateOf("mapbox/driving") } // "mapbox/driving", "mapbox/walking", "mapbox/cycling"
-    var computedRoutePoints by remember { mutableStateOf<List<org.osmdroid.util.GeoPoint>>(emptyList()) }
-    var routeDistanceKm by remember { mutableStateOf<Double?>(null) }
-    var routeDurationMinutes by remember { mutableStateOf<Double?>(null) }
-    var routeError by remember { mutableStateOf<String?>(null) }
-    var isFetchingRoute by remember { mutableStateOf(false) }
-
-    fun fetchFreeOSRMRoute(
-        startLat: Double,
-        startLng: Double,
-        endLat: Double,
-        endLng: Double,
-        profile: String,
-        onSuccess: (List<org.osmdroid.util.GeoPoint>, Double, Double) -> Unit,
-        onError: (String) -> Unit
-    ) {
-        val osrmProfile = when (profile) {
-            "mapbox/walking" -> "foot"
-            "mapbox/cycling" -> "bicycle"
-            else -> "driving"
-        }
-        val url = "https://router.project-osrm.org/route/v1/$osrmProfile/$startLng,$startLat;$endLng,$endLat?geometries=geojson&overview=full"
-        val client = okhttp3.OkHttpClient()
-        val request = okhttp3.Request.Builder().url(url).build()
-            
-        client.newCall(request).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                    onError(e.message ?: "الاتصال بالشبكة فشل")
-                }
-            }
-            
-            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                response.use {
-                    if (!response.isSuccessful) {
-                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            onError("خطأ من السيرفر: ${response.code}")
-                        }
-                        return
-                    }
-                    val body = response.body?.string()
-                    if (body == null) {
-                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            onError("استجابة فارغة")
-                        }
-                        return
-                    }
-                    try {
-                        val json = org.json.JSONObject(body)
-                        val code = json.optString("code")
-                        if (code != "Ok") {
-                            val message = json.optString("message", "خطأ غير معروف")
-                            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                                onError("خطأ من الخدمة: $message")
-                            }
-                            return
-                        }
-                        val routes = json.getJSONArray("routes")
-                        if (routes.length() == 0) {
-                            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                                onError("لم يتم العثور على أي مسار حقيقي")
-                            }
-                            return
-                        }
-                        val route = routes.getJSONObject(0)
-                        val distanceMeters = route.optDouble("distance", 0.0)
-                        val durationSeconds = route.optDouble("duration", 0.0)
-                        val geometry = route.getJSONObject("geometry")
-                        val coords = geometry.getJSONArray("coordinates")
-                        
-                        val points = mutableListOf<org.osmdroid.util.GeoPoint>()
-                        for (i in 0 until coords.length()) {
-                            val coord = coords.getJSONArray(i)
-                            val lng = coord.getDouble(0)
-                            val lat = coord.getDouble(1)
-                            points.add(org.osmdroid.util.GeoPoint(lat, lng))
-                        }
-                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            onSuccess(points, distanceMeters / 1000.0, durationSeconds / 60.0)
-                        }
-                    } catch (e: Exception) {
-                        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            onError("فشل في تفكيك بيانات المسار Geometries: ${e.message}")
-                        }
-                    }
-                }
-            }
-        })
-    }
-
-    LaunchedEffect(userLatitude, userLongitude, activeRoutingEndLat, activeRoutingEndLng, routingProfile) {
-        val startLat = userLatitude
-        val startLng = userLongitude
-        val endLat = activeRoutingEndLat
-        val endLng = activeRoutingEndLng
-        
-        if (startLat != null && startLng != null && endLat != null && endLng != null) {
-            isFetchingRoute = true
-            routeError = null
-            
-            fetchFreeOSRMRoute(
-                startLat = startLat,
-                startLng = startLng,
-                endLat = endLat,
-                endLng = endLng,
-                profile = routingProfile,
-                onSuccess = { points, dist, duration ->
-                    computedRoutePoints = points
-                    routeDistanceKm = dist
-                    routeDurationMinutes = duration
-                    routeError = null
-                    isFetchingRoute = false
-                },
-                onError = { err ->
-                    routeError = err
-                    isFetchingRoute = false
-                    // Draw a straight fallback line so that the route is never empty, as per specification #11
-                    computedRoutePoints = listOf(
-                        org.osmdroid.util.GeoPoint(startLat, startLng),
-                        org.osmdroid.util.GeoPoint(endLat, endLng)
-                    )
-                }
-            )
-        } else {
-            computedRoutePoints = emptyList()
-            routeDistanceKm = null
-            routeDurationMinutes = null
-            routeError = null
-        }
-    }
-
     // Center map automatically when location loads initially
     var hasCenteredMapInitially by rememberSaveable { mutableStateOf(false) }
-    var loadedInitialDefaultPlaces by rememberSaveable { mutableStateOf(false) }
-
-    // Load initial places immediately for default Morocco view on startup
-    LaunchedEffect(Unit) {
-        if (!loadedInitialDefaultPlaces) {
-            fetchNearbyPlacesFromOverpass(mapCenterLat, mapCenterLng) { results ->
-                fetchedPlacesList = results
-                loadedInitialDefaultPlaces = true
-            }
-        }
-    }
 
     LaunchedEffect(userLatitude, userLongitude) {
         val lat = userLatitude
@@ -2640,26 +2101,160 @@ fun MapScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Combine custom preloaded Riyadh pet care spots with reactive live places and user reports
-    val combinedPlaces = remember(fetchedPlacesList, incidents, userCustomPlaces, userLatitude, userLongitude) {
+    // Load last known GPS location as center until first precision lock arrives
+    LaunchedEffect(Unit) {
+        val savedLatVal = prefs.getFloat("user_lat", 0f).toDouble()
+        val savedLngVal = prefs.getFloat("user_lng", 0f).toDouble()
+        if (savedLatVal != 0.0 && savedLngVal != 0.0) {
+            userLatitude = savedLatVal
+            userLongitude = savedLngVal
+            mapCenterLat = savedLatVal
+            mapCenterLng = savedLngVal
+            android.util.Log.d("MapScreen", "Loaded last verified GPS location on startup: $savedLatVal, $savedLngVal")
+            fetchNearbyPlacesFromOverpass(savedLatVal, savedLngVal) { results ->
+                fetchedPlacesList = results
+            }
+        }
+    }
+
+    // Retrieve active location via GPS with proper unregistration on lifecycle changes
+    DisposableEffect(hasLocationPermission, lifecycleOwner) {
+        var areUpdatesRegistered = false
+        var listener: LocationListener? = null
+        var manager: LocationManager? = null
+
+        fun startLocationUpdates() {
+            val isFineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (!isFineGranted) {
+                android.util.Log.d("MapScreen", "Cannot start location updates: ACCESS_FINE_LOCATION not granted yet.")
+                return
+            }
+            try {
+                val appContext = context.applicationContext
+                if (manager == null) {
+                    manager = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                }
+                isGpsEnabled = manager!!.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                
+                // Set up our high-precision location listner with physical filters
+                if (listener == null) {
+                    listener = object : LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            val acc = location.accuracy
+                            gpsAccuracy = acc
+                            
+                            // 9. If accuracy is greater than 50m, discard
+                            if (acc > 50f) {
+                                android.util.Log.w("MapScreen", "Discarded poor location accuracy: ${acc} meters")
+                                return
+                            }
+                            
+                            // 8. Distance and physical speed check
+                            val prev = lastLoggedLocation
+                            val nowTime = System.currentTimeMillis()
+                            if (prev != null) {
+                                val distance = prev.distanceTo(location)
+                                val timeDeltaSeconds = (nowTime - prev.time) / 1000f
+                                if (timeDeltaSeconds > 0.5f) {
+                                    val speed = distance / timeDeltaSeconds
+                                    if (speed > 150f) { // Stats jump anomalous speed (> 540 km/h)
+                                        android.util.Log.e("MapScreen", "Anomalous speed jump detected: ${speed}m/s. Discarding location update.")
+                                        return
+                                    }
+                                }
+                            }
+                            
+                            // Active verified parameters
+                            userLatitude = location.latitude
+                            userLongitude = location.longitude
+                            lastLoggedLocation = location
+                            
+                            // Persistence
+                            prefs.edit()
+                                .putFloat("user_lat", location.latitude.toFloat())
+                                .putFloat("user_lng", location.longitude.toFloat())
+                                .apply()
+                        }
+                    }
+                }
+                
+                if (!areUpdatesRegistered && manager != null && listener != null) {
+                    manager!!.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        1000L,
+                        1f,
+                        listener!!
+                    )
+                    manager!!.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER,
+                        2000L,
+                        2f,
+                        listener!!
+                    )
+                    areUpdatesRegistered = true
+                    android.util.Log.d("MapScreen", "Successfully registered GPS/Network updates")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MapScreen", "Error starting location updates: ${e.message}")
+            }
+        }
+
+        fun stopLocationUpdates() {
+            if (manager != null && listener != null && areUpdatesRegistered) {
+                try {
+                    manager!!.removeUpdates(listener!!)
+                    android.util.Log.d("MapScreen", "Successfully removed location updates listener")
+                } catch (e: Exception) {
+                    android.util.Log.e("MapScreen", "Error removing location updates: ${e.message}")
+                }
+            }
+        }
+
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && hasLocationPermission) {
+                startLocationUpdates()
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                stopLocationUpdates()
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (hasLocationPermission) {
+            startLocationUpdates()
+        }
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            stopLocationUpdates()
+        }
+    }
+
+    val combinedPlaces = remember(fetchedPlacesList, incidents) {
+        val predefinedSpots = listOf(
+            PetPlace("clinic_1", "مستشفى العاصمة البيطري 🏥", "عيادات بيطرية 🏥", "clinic", 24.7012, 46.6853, "مستشفى متكامل لتقديم خدمات الطوارئ الطبية والجراحة والرعاية السريرية الفائقة بمميزات عالمية.", "4.8", "210", "+966 500001234", "مفتوح ٢٤ ساعة طوارئ", "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("clinic_2", "عيادة د. فهد للحيوانات الأليفة 🏥", "عيادات بيطرية 🏥", "clinic", 24.6852, 46.7214, "تشخيص متقدم، تطعيمات، سونار، ورعاية متميزة لكل أنواع القطط والكلاب رعاية تامة.", "4.6", "115", "+966 507894561", "٠٩:٠٠ ص - ١٠:٠٠ م", "https://images.unsplash.com/photo-1516600118604-51a31610c14b?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("shelter_1", "جمعية رفق لملاقئ الحيوانات 🐶", "الملاجئ والتبني 🐶", "shelter", 24.7584, 46.6432, "ملجأ خيري إنساني لإيواء الكلاب والقطط الضالة وتهيئتها للتبني في بيوت حنونة وآمنة.", "4.9", "154", "+966 501234567", "٠٨:٠٠ ص - ٠٩:٠٠ م", "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("shelter_2", "بيت الأمان لإنقاذ الحيوان 🐶", "الملاجئ والتبني 🐶", "shelter", 24.7153, 46.6268, "موقع إنقاذ وملاجئ القطط لتقديم الاستضافة الطبية المؤقتة والتبني الفوري المجاني لمستحقيها.", "4.7", "89", "+966 551122334", "٠٩:٠٠ ص - ٠٦:٠٠ م", "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("shop_1", "محل واحة أليف لمستلزمات القطط 🛒", "متاجر ومستلزمات 🛒", "shop", 24.7612, 46.6198, "أغذية جافة، رطبة، ألعاب، أقفاص، وإكسسوارات مستوردة فاخرة لحيوانك الأليف المميز.", "4.8", "95", "+966 504443332", "١٠:٠٠ ص - ١١:٠٠ م", "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("grooming_1", "صالون الكلب المدلل للجمال ✂️", "العناية والفنادق ✂️", "grooming", 24.7198, 46.6692, "استحمام، قص شعر، تنظيف مخالب وأذن، سبا هادئ للكلاب والقطط الضالة بأيدي خبراء.", "4.9", "135", "+966 502221115", "١٢:٠٠ م - ١٠:٠٠ م", "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("hotel_1", "فندق السعادة لاستضافة القطط 🏨", "العناية والفنادق ✂️", "hotel", 24.7511, 46.6622, "أجنحة خاصة مكيفة وآمنة بالكامل لإقامة حيوانك الأليف أثناء سفرك، مع رعاية غذائية دقيقة.", "5.0", "78", "+966 505556667", "٠٨:٠٠ ص - ١٠:٠٠ م", "https://images.unsplash.com/photo-1590419690008-905885483012?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("park_1", "حديقة أليفي المفتوحة للعب والتنزه 🎾", "مراكز تدريب وحدائق 🎓", "park", 24.7301, 46.6499, "متنزه رائع مغلق وآمن للتمشية واللعب مع الحيوانات الأليفة في الهواء ومناطق الجري الحرة.", "4.7", "112", "-", "مفتوح ٢٤ ساعة طوال أيام الأسبوع", "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"),
+            PetPlace("training_1", "مدرسة أبطال الرياض لتدريب الكلاب 🎓", "مراكز تدريب وحدائق 🎓", "training", 24.7431, 46.6575, "تدريب على الطاعة، تعديل السلوك، تدريب الحماية والتمشية الهادئة مع أفضل مدربين بالمملكة.", "4.9", "64", "+966 503211234", "٠٤:٠٠ م - ١٠:٠٠ م", "https://images.unsplash.com/photo-1535268647977-a403b69fc756?w=400&auto=format&fit=crop&q=60")
+        )
+
         val customRescueSpots = incidents.map { incident ->
-            val lat = incident.latitude ?: run {
-                val hash = incident.id.hashCode().toDouble()
-                val latOffset = ((Math.abs(hash) % 100) / 1000.0) - 0.05
-                (userLatitude ?: 34.0209) + latOffset
-            }
-            val lng = incident.longitude ?: run {
-                val hash = incident.id.hashCode().toDouble()
-                val lngOffset = (((Math.abs(hash) / 100).toInt() % 100) / 1000.0) - 0.05
-                (userLongitude ?: -6.8416) + lngOffset
-            }
+            val hash = incident.id.hashCode().toDouble()
+            val latOffset = ((Math.abs(hash) % 100) / 1000.0) - 0.05
+            val lngOffset = (((Math.abs(hash) / 100).toInt() % 100) / 1000.0) - 0.05
+            val latVal = 24.7136 + latOffset
+            val lngVal = 46.6753 + lngOffset
             PetPlace(
                 id = incident.id,
                 name = incident.title,
                 category = "بلاغات عاجلة 🚨",
                 type = "emergency",
-                lat = lat,
-                lng = lng,
+                lat = latVal,
+                lng = lngVal,
                 desc = "التبليغ عن حالة في: ${incident.location}. تم الرفع بواسطة المتطوع: ${incident.reporter}.",
                 rating = "عاجل",
                 reviews = "شغال",
@@ -2669,32 +2264,378 @@ fun MapScreen(viewModel: MainViewModel) {
             )
         }
 
-        customRescueSpots + fetchedPlacesList + userCustomPlaces
+        val geoJsonString = """
+        {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "مدينة القدس الشريف 🇵🇸",
+                "Name (EN)": "Jerusalem",
+                "النوع": "مدينة تاريخية وعاصمة دينية",
+                "category": "religion",
+                "الوصف": "من أقدم وأقدس مدن العالم ولها وجدان تاريخي فريد ومأوى للتكافل الإنساني."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 35.2137, 31.7683 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "عيادة الرياض البيطرية الحديثة (طبيب حيوانات)",
+                "Name (EN)": "Modern Riyadh Vet Clinic (Doctor)",
+                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
+                "الدولة": "المملكة العربية السعودية",
+                "المدينة": "الرياض",
+                "category": "vet",
+                "الوصف": "تطعيمات، جراحة عامة، رعاية عاجلة بكادر طبي كامل.",
+                "الهاتف": "+966-50-1234567"
+              },
+              "geometry": { "type": "Point", "coordinates": [ 46.6753, 24.7116 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "متجر أليفي لغذاء ومستلزمات القطط والكلاب",
+                "Name (EN)": "Aleefi Pet Store & Supplies",
+                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
+                "الدولة": "المملكة العربية السعودية",
+                "المدينة": "الرياض",
+                "category": "petstore",
+                "الوصف": "أغذية مستوردة، ألعاب قطط، بيوت حيوانات، أقفاص طيور. ساعات العمل: 9:00 ص - 11:30 م"
+              },
+              "geometry": { "type": "Point", "coordinates": [ 46.7234, 24.7301 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "عيادة هليوبوليس للحيوانات الأليفة (دكتور بيطري)",
+                "Name (EN)": "Heliopolis Pet & Vet Clinic (Doctor)",
+                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
+                "الدولة": "مصر",
+                "المدينة": "القاهرة",
+                "category": "vet",
+                "الوصف": "طب أطفال الحيوان، فحص سونار وتحاليل دم، قص أظافر وتجميل. دعم طبي طوارئ على مدار 24 ساعة.",
+                "الهاتف": "+20120000000"
+              },
+              "geometry": { "type": "Point", "coordinates": [ 31.3301, 30.1002 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "متجر كنز الحيوان والأغذية والألعاب",
+                "Name (EN)": "Animal Treasure Pet Shop",
+                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
+                "الدولة": "مصر",
+                "المدينة": "القاهرة",
+                "category": "petstore",
+                "الوصف": "رمل قطط صحي، دراي فود ممتاز، فيتامينات ومكملات غذائية للكلاب."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 31.245, 30.041 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "عيادة الشفاء للطب البيطري (طبيب حيوانات)",
+                "Name (EN)": "Al Shifa Veterinary Cabinets (Doctor)",
+                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
+                "الدولة": "المغرب",
+                "المدينة": "الدار البيضاء",
+                "category": "vet",
+                "الوصف": "تطعيم الكلاب والقطط، عمليات تجميلية وجراحة الفم والأسنان."
+              },
+              "geometry": { "type": "Point", "coordinates": [ -7.59, 33.573 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "محل مستلزمات كلاب وقطط الوفاء والأليفة",
+                "Name (EN)": "Al Wafaa Dog & Cat Pet Market (Shop)",
+                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
+                "الدولة": "المغرب",
+                "المدينة": "الدار البيضاء",
+                "category": "petstore",
+                "الوصف": "أجهزة إطعام أوتوماتيكية، أحواض سمك مجهزة، استشارات تربية مجانية."
+              },
+              "geometry": { "type": "Point", "coordinates": [ -7.611, 33.585 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "عيادة عمان لرعاية الحيوان والطيور (طبيب بيطري)",
+                "Name (EN)": "Amman Animal & Bird Clinic (Doctor)",
+                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
+                "الدولة": "الأردن",
+                "المدينة": "عمان",
+                "category": "vet",
+                "الوصف": "كشف عام، تصوير إشعاعي، وقاية ومكافحة الطفيليات والحشرات للأرانب والهامستر للحيوانات."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 35.91, 31.953 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "متجر طيور الحب وببغاء الزينة وأغذيتها",
+                "Name (EN)": "Love Birds & Parrot Ornament Store & Supplies",
+                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
+                "الدولة": "الأردن",
+                "المدينة": "عمان",
+                "category": "petstore",
+                "الوصف": "بذور طيور مدعمة بالفيتامينات، أقفاص حديدية كبرى، ألعاب تفاعلية للببغاء."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 35.885, 31.972 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "مستشفى الجميرا البيطري المتقدم للحيوانات الأليفة",
+                "Name (EN)": "Jumeirah Veterinary Hospital (Doctor)",
+                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
+                "الدولة": "الإمارات العربية المتحدة",
+                "المدينة": "دبي",
+                "category": "vet",
+                "الوصف": "أحدث تقنيات التشخيص، رعاية وإقامة فندقية للحيوانات، رعاية يومية صحية كاملة."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 55.28, 25.21 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "العاصمة الرياض",
+                "Name (EN)": "Riyadh",
+                "الدولة": "المملكة العربية السعودية",
+                "Country": "Saudi Arabia",
+                "category": "shelter",
+                "الوصف": "العاصمة التاريخية والسياسية للمملكة ومركز تنموي واقتصادي رائد لخدمات ودعم الرفق بالحيوان."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 46.7196, 24.7136 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "العاصمة القاهرة",
+                "Name (EN)": "Cairo",
+                "الدولة": "مصر",
+                "Country": "Egypt",
+                "category": "shelter",
+                "الوصف": "تأسست عام 969 ميلادي على يد الفاطميين ومشهورة بمدينة الألف مئذنة، وبها العديد من ملاجئ الحيوان."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 31.2357, 30.0444 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "العاصمة بغداد",
+                "Name (EN)": "Baghdad",
+                "الدولة": "العراق",
+                "Country": "Iraq",
+                "category": "shelter",
+                "الوصف": "عاصمة الخلافة العباسية التاريخية ودار الحكمة ومركز العلوم والفلسفة القديم والنشاط الطوعي لإنقاذ الحيوان."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 44.3615, 33.3128 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "العاصمة طوكيو",
+                "Name (EN)": "Tokyo",
+                "الدولة": "اليابان",
+                "Country": "Japan",
+                "category": "shelter",
+                "الوصف": "أكبر حاضرة سكانية في العالم ومزيج فريد من التكنولوجيا الفائقة وتوفر عيادات ذكية ومراكز تبني."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 139.6503, 35.6762 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "العاصمة باريس",
+                "Name (EN)": "Paris",
+                "الدولة": "فرنسا",
+                "Country": "France",
+                "category": "shelter",
+                "الوصف": "مدينة الأنوار التاريخية، مركز عالمي للفن ومجتمعات رعاية وحماية الفصيلة الأليفة."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 2.3522, 48.8566 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الاسم (عربي)": "العاصمة لندن",
+                "Name (EN)": "London",
+                "الدولة": "المملكة المتحدة",
+                "Country": "United Kingdom",
+                "category": "shelter",
+                "الوصف": "عاصمة تاريخية على نهر التايمز، تجمع بين متاحف عريقة وقوة مالية متطورة وقوانين رعاية الحيوان الصارمة."
+              },
+              "geometry": { "type": "Point", "coordinates": [ -0.1278, 51.5074 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "المعلم (عربي)": "أهرامات الجيزة",
+                "Name (EN)": "Giza Pyramids",
+                "category": "park",
+                "الوصف": "مقابر ملوكية للفراعنة خوفو وخفرع ومنقرع بنيت قبل أكثر من 4500 عام وتحتفظ بجاذبيتها المعمارية والشهامة في إنقاذ حيواناتها."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 31.1342, 29.9792 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "المعلم (عربي)": "البتراء (المدينة الوردية)",
+                "Name (EN)": "Petra",
+                "category": "park",
+                "الوصف": "مدينة كاملة منحوتة في الصخور الوردية أسستها حضارة الأنباط العربية وتتميز بنشاط حماية الخيول والجمال للأفواج السياحية."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 35.4444, 30.3285 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "المعلم (عربي)": "المدرج الروماني (الكولوسيوم)",
+                "Name (EN)": "The Colosseum",
+                "category": "park",
+                "الوصف": "أكبر مدرج روماني تاريخي في قلب روما، كان يتسع لحوالي 50 ألف متفرج لمتابعة قتالات المصارعين قديماً."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 12.4922, 41.8902 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "المعلم (عربي)": "تاج محل",
+                "Name (EN)": "Taj Mahal",
+                "category": "park",
+                "الوصف": "ضريح رائع من الرخام الأبيض أقامه الإمبراطور شاه جهان لتخليد ذكرى زوجته الراحلة ممتاز محل ويمثل قمة الفن المغولي."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 78.0421, 27.1751 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "النهر": "نهر النيل العظيم",
+                "Name (EN)": "The Nile River",
+                "category": "rescue",
+                "الوصف": "أطول أنهار العالم، مهد الحضارات التاريخية ومأوى التنوع الحيوي المميز."
+              },
+              "geometry": { "type": "Point", "coordinates": [ 31.2357, 30.0444 ] }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "الإقليم": "مثلث برمودا الغامض",
+                "Name (EN)": "Bermuda Triangle",
+                "category": "rescue",
+                "الوصف": "اشتهر تاريخياً بسبب التقارير الغامضة والإشاعات حول اختفاء بعض السفن والطائرات."
+              },
+              "geometry": { "type": "Point", "coordinates": [ -71.0, 25.0 ] }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val geoJsonPlaces = try {
+            val obj = org.json.JSONObject(geoJsonString)
+            val features = obj.getJSONArray("features")
+            val list = mutableListOf<PetPlace>()
+            for (i in 0 until features.length()) {
+                val f = features.getJSONObject(i)
+                val props = f.getJSONObject("properties")
+                val geom = f.getJSONObject("geometry")
+                val coords = geom.getJSONArray("coordinates")
+                val lngObj = coords.getDouble(0)
+                val latObj = coords.getDouble(1)
+                
+                val nameStr = when {
+                    props.has("الاسم (عربي)") -> props.getString("الاسم (عربي)")
+                    props.has("المعلم (عربي)") -> props.getString("المعلم (عربي)")
+                    props.has("Name (EN)") -> props.getString("Name (EN)")
+                    props.has("name") -> props.getString("name")
+                    props.has("الاسم") -> props.getString("الاسم")
+                    props.has("النهر") -> props.getString("النهر")
+                    props.has("الإقليم") -> props.getString("الإقليم")
+                    else -> "موقع جيو مضاف 📍"
+                }
+                
+                val descStr = when {
+                    props.has("الوصف") -> props.getString("الوصف")
+                    props.has("description") -> props.getString("description")
+                    props.has("التاريخ") -> props.getString("التاريخ")
+                    props.has("المستلزمات المتوفرة") -> props.getString("المستلزمات المتوفرة")
+                    props.has("المنتجات") -> props.getString("المنتجات")
+                    props.has("الخدمات البيطرية") -> props.getString("الخدمات البيطرية")
+                    props.has("الخدمات") -> props.getString("الخدمات")
+                    else -> "تبين من الخريطة التفاعلية والبيانات الجيوجيسون الممتازة."
+                }
+                
+                val searchStr = (nameStr + " " + descStr + " " + props.optString("النوع") + " " + props.optString("category") + " " + props.optString("التصنيف")).lowercase()
+                
+                val mappedCategoryAndType = when {
+                    searchStr.contains("طبيب") || searchStr.contains("بيطر") || searchStr.contains("عيادة") || searchStr.contains("دكتور") || searchStr.contains("vet") || searchStr.contains("clinic") || searchStr.contains("doctor") || searchStr.contains("veterinary") -> {
+                        Pair("عيادات بيطرية 🏥", "clinic")
+                    }
+                    searchStr.contains("متجر") || searchStr.contains("محل") || searchStr.contains("مستلزمات") || searchStr.contains("shop") || searchStr.contains("store") || searchStr.contains("market") || searchStr.contains("pet store") -> {
+                        Pair("متاجر ومستلزمات 🛒", "shop")
+                    }
+                    searchStr.contains("ملجأ") || searchStr.contains("تبني") || searchStr.contains("إيواء") || searchStr.contains("shelter") || searchStr.contains("sanctuary") || searchStr.contains("الأمان") || searchStr.contains("عاصمة") || searchStr.contains("riyadh") || searchStr.contains("الرياض") || searchStr.contains("القاهرة") || searchStr.contains("بغداد") || searchStr.contains("طوكيو") || searchStr.contains("باريس") || searchStr.contains("لندن") || searchStr.contains("القدس") || searchStr.contains("jerusalem") -> {
+                        Pair("الملاجئ والتبني 🐶", "shelter")
+                    }
+                    searchStr.contains("حديقة") || searchStr.contains("منتزه") || searchStr.contains("تدريب") || searchStr.contains("مدرسة") || searchStr.contains("park") || searchStr.contains("training") || searchStr.contains("zoo") || searchStr.contains("wonder") || searchStr.contains("أهرامات") || searchStr.contains("البتراء") || searchStr.contains("كولوسيوم") || searchStr.contains("تاج محل") -> {
+                        Pair("مراكز تدريب وحدائق 🎓", "park")
+                    }
+                    else -> {
+                        Pair("الملاجئ والتبني 🐶", "shelter")
+                    }
+                }
+                
+                val ratingVal = if (mappedCategoryAndType.second == "clinic" || mappedCategoryAndType.second == "shop") "4.8" else "مميز"
+                val reviewsVal = if (mappedCategoryAndType.second == "clinic" || mappedCategoryAndType.second == "shop") "142" else "إرشاد"
+                val phoneVal = props.optString("الهاتف", "-")
+                
+                list.add(
+                    PetPlace(
+                        id = "geojson_$i",
+                        name = nameStr,
+                        category = mappedCategoryAndType.first,
+                        type = mappedCategoryAndType.second,
+                        lat = latObj,
+                        lng = lngObj,
+                        desc = descStr,
+                        rating = ratingVal,
+                        reviews = reviewsVal,
+                        phone = phoneVal,
+                        hours = "٠٩:٠٠ ص - ٠٩:٠٠ م",
+                        imageUrl = if (mappedCategoryAndType.second == "clinic") {
+                            "https://images.unsplash.com/photo-1516600118604-51a31610c14b?w=400&auto=format&fit=crop&q=60"
+                        } else if (mappedCategoryAndType.second == "shop") {
+                            "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=60"
+                        } else {
+                            "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"
+                        }
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            emptyList<PetPlace>()
+        }
+
+        predefinedSpots + customRescueSpots + fetchedPlacesList + geoJsonPlaces
     }
 
-    // Filter locations dynamically using the top filters and local keyword search
-    val filteredPlaces = remember(combinedPlaces, filterCategory, favoritePlaces, localPlaceSearchText) {
+    // Filter locations dynamically using the top filters
+    val filteredPlaces = remember(combinedPlaces, filterCategory) {
         combinedPlaces.filter { place ->
-            val matchesCategory = when (filterCategory) {
+            when (filterCategory) {
                 "الكل" -> true
-                "المفضلة ⭐" -> favoritePlaces.contains(place.id)
                 "الملاجئ والتبني 🐶" -> place.category == "الملاجئ والتبني 🐶" || place.type == "shelter"
                 "عيادات بيطرية 🏥" -> place.category == "عيادات بيطرية 🏥" || place.type == "clinic"
-                "صناديق تغذية ومياه 🍲" -> place.category == "صناديق تغذية ومياه 🍲" || place.type == "feeding"
                 "متاجر ومستلزمات 🛒" -> place.category == "متاجر ومستلزمات 🛒" || place.type == "shop"
                 "العناية والفنادق ✂️" -> place.category == "العناية والفنادق ✂️" || place.type == "grooming" || place.type == "hotel"
-                "مراكز تدريب وحدائق 🎓" -> place.category == "مراكز تدريب وحدائق 🎓" || place.type == "training" || place.type == "park" || place.type == "zoo"
-                "أماكن صديقة للأليف 🐾" -> place.category == "أماكن صديقة للأليف 🐾" || place.type == "dog_allowed"
+                "مراكز تدريب وحدائق 🎓" -> place.category == "مراكز تدريب وحدائق 🎓" || place.type == "training" || place.type == "park"
                 "بلاغات عاجلة 🚨" -> place.category == "بلاغات عاجلة 🚨" || place.type == "emergency"
                 else -> true
             }
-            val matchesKeyword = localPlaceSearchText.isBlank() ||
-                place.name.contains(localPlaceSearchText, ignoreCase = true) ||
-                place.category.contains(localPlaceSearchText, ignoreCase = true) ||
-                place.desc.contains(localPlaceSearchText, ignoreCase = true) ||
-                place.address.contains(localPlaceSearchText, ignoreCase = true)
-
-            matchesCategory && matchesKeyword
         }
     }
 
@@ -2722,226 +2663,16 @@ fun MapScreen(viewModel: MainViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("خريطة التضامن والإنقاذ 📍", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground)
-                        Text("ابحث عن الملاجئ وعيادات الحيوانات وصناديق التغذية.", fontSize = 11.sp, color = Color.Gray)
+                    Column {
+                        Text("خريطة التضامن والإنقاذ 📍", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
+                        Text("ابحث عن الملاجئ وعيادات الحيوانات الشريكة وصناديق التغذية.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Button(
+                        onClick = { showReportDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Button(
-                            onClick = { showAddPlaceDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text("إضافة موقع 📍", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Button(
-                            onClick = { showReportDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text("إرسال بلاغ 🚨", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                // Geocoding Search Input Field to Teleport Map & Load OSM Places anywhere in the world
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "بحث جيوغرافي",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (searchLocationText.isEmpty()) {
-                            Text(
-                                text = "ابحث عن أي مدينة، دولة، أو حي في العالم... 🗺️",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                fontSize = 11.sp
-                            )
-                        }
-                        BasicTextField(
-                            value = searchLocationText,
-                            onValueChange = { searchLocationText = it },
-                            textStyle = TextStyle(
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 12.sp,
-                                textDirection = androidx.compose.ui.text.style.TextDirection.Rtl
-                            ),
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-                            singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                imeAction = androidx.compose.ui.text.input.ImeAction.Search
-                            ),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                                onSearch = {
-                                    if (searchLocationText.isNotBlank()) {
-                                        isGeocodingLoading = true
-                                        geocodeAddress(
-                                            queryText = searchLocationText,
-                                            onSuccess = { foundLat, foundLng, foundName ->
-                                                isGeocodingLoading = false
-                                                mapCenterLat = foundLat
-                                                mapCenterLng = foundLng
-                                                lastSearchedLat = foundLat
-                                                lastSearchedLng = foundLng
-                                                
-                                                mapViewRef?.let { map ->
-                                                    map.controller.setZoom(15.0)
-                                                    map.controller.animateTo(org.osmdroid.util.GeoPoint(foundLat, foundLng))
-                                                }
-                                                
-                                                fetchNearbyPlacesFromOverpass(foundLat, foundLng) { results ->
-                                                    fetchedPlacesList = results
-                                                }
-                                                android.widget.Toast.makeText(context, "تم الانتقال إلى: $foundName", android.widget.Toast.LENGTH_LONG).show()
-                                            },
-                                            onError = { errMsg ->
-                                                isGeocodingLoading = false
-                                                android.widget.Toast.makeText(context, errMsg, android.widget.Toast.LENGTH_LONG).show()
-                                            }
-                                        )
-                                    }
-                                }
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    if (isGeocodingLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else if (searchLocationText.isNotEmpty()) {
-                        IconButton(
-                            onClick = { searchLocationText = "" },
-                            modifier = Modifier.size(18.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "مسح",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-                    
-                    TextButton(
-                        onClick = {
-                            if (searchLocationText.isNotBlank()) {
-                                isGeocodingLoading = true
-                                geocodeAddress(
-                                    queryText = searchLocationText,
-                                    onSuccess = { foundLat, foundLng, foundName ->
-                                        isGeocodingLoading = false
-                                        mapCenterLat = foundLat
-                                        mapCenterLng = foundLng
-                                        lastSearchedLat = foundLat
-                                        lastSearchedLng = foundLng
-                                        
-                                        mapViewRef?.let { map ->
-                                            map.controller.setZoom(15.0)
-                                            map.controller.animateTo(org.osmdroid.util.GeoPoint(foundLat, foundLng))
-                                        }
-                                        
-                                        fetchNearbyPlacesFromOverpass(foundLat, foundLng) { results ->
-                                            fetchedPlacesList = results
-                                        }
-                                        android.widget.Toast.makeText(context, "تم الانتقال إلى: $foundName", android.widget.Toast.LENGTH_LONG).show()
-                                    },
-                                    onError = { errMsg ->
-                                        isGeocodingLoading = false
-                                        android.widget.Toast.makeText(context, errMsg, android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                )
-                            }
-                        },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text("انتقال 🛫", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-
-                // Local tags / places text filter
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                        .border(
-                            width = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                        .padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = "تصفية الأماكن",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (localPlaceSearchText.isEmpty()) {
-                            Text(
-                                text = "ابحث بالاسم، عيادة، متجر، ملجأ، أو حديقة... 🔍",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                fontSize = 11.sp
-                            )
-                        }
-                        BasicTextField(
-                            value = localPlaceSearchText,
-                            onValueChange = { localPlaceSearchText = it },
-                            textStyle = TextStyle(
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 11.sp,
-                                textDirection = androidx.compose.ui.text.style.TextDirection.Rtl
-                            ),
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    if (localPlaceSearchText.isNotEmpty()) {
-                        IconButton(
-                            onClick = { localPlaceSearchText = "" },
-                            modifier = Modifier.size(16.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "مسح",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
+                        Text("إرسال بلاغ 🚨", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -2950,13 +2681,124 @@ fun MapScreen(viewModel: MainViewModel) {
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf("الكل", "المفضلة ⭐", "صناديق تغذية ومياه 🍲", "الملاجئ والتبني 🐶", "عيادات بيطرية 🏥", "متاجر ومستلزمات 🛒", "العناية والفنادق ✂️", "مراكز تدريب وحدائق 🎓", "أماكن صديقة للأليف 🐾", "بلاغات عاجلة 🚨").forEach { category ->
+                    listOf("الكل", "الملاجئ والتبني 🐶", "عيادات بيطرية 🏥", "متاجر ومستلزمات 🛒", "العناية والفنادق ✂️", "مراكز تدريب وحدائق 🎓", "بلاغات عاجلة 🚨").forEach { category ->
                         FilterChip(
                             selected = filterCategory == category,
                             onClick = { filterCategory = category },
                             label = { Text(category, fontSize = 11.sp) }
                         )
                     }
+                }
+            }
+        }
+
+        // New sleek manual city override geocoding search bar with dynamic OSM integration
+        var locationQuery by remember { mutableStateOf("") }
+        var isLocatingAddress by remember { mutableStateOf(false) }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = locationQuery,
+                onValueChange = { locationQuery = it },
+                placeholder = { Text("أدخل مدينتك لتثبيت موقعك (مثال: الدار البيضاء، الرياض)", fontSize = 11.sp, color = Color.Gray) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 44.dp),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "موقع",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (locationQuery.isNotEmpty()) {
+                        IconButton(onClick = { locationQuery = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "مسح",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = {
+                        if (locationQuery.isNotBlank() && !isLocatingAddress) {
+                            isLocatingAddress = true
+                            geocodeAddress(locationQuery) { lat, lng ->
+                                isLocatingAddress = false
+                                if (lat != null && lng != null) {
+                                    userLatitude = lat
+                                    userLongitude = lng
+                                    mapCenterLat = lat
+                                    mapCenterLng = lng
+                                    hasCenteredMapInitially = false // allow center trigger
+                                    
+                                    prefs.edit()
+                                        .putFloat("user_lat", lat.toFloat())
+                                        .putFloat("user_lng", lng.toFloat())
+                                        .apply()
+                                    
+                                    android.widget.Toast.makeText(context, "تم تحديد مكان الهاتف بنجاح: $locationQuery 🗺️", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "تعذر تحديد الموقع، جرب اسماً آخر للمدينة.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                )
+            )
+            Button(
+                onClick = {
+                    if (locationQuery.isNotBlank() && !isLocatingAddress) {
+                        isLocatingAddress = true
+                        geocodeAddress(locationQuery) { lat, lng ->
+                            isLocatingAddress = false
+                            if (lat != null && lng != null) {
+                                userLatitude = lat
+                                userLongitude = lng
+                                mapCenterLat = lat
+                                mapCenterLng = lng
+                                hasCenteredMapInitially = false // allow center trigger
+                                
+                                prefs.edit()
+                                    .putFloat("user_lat", lat.toFloat())
+                                    .putFloat("user_lng", lng.toFloat())
+                                    .apply()
+                                
+                                android.widget.Toast.makeText(context, "تم تحديد مكان الهاتف بنجاح: $locationQuery 🗺️", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "تعذر تحديد الموقع، جرب اسماً آخر للمدينة.", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                },
+                enabled = locationQuery.isNotBlank() && !isLocatingAddress,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (isLocatingAddress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("انتقال 🗺️", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2970,42 +2812,7 @@ fun MapScreen(viewModel: MainViewModel) {
                 .clip(RoundedCornerShape(16.dp))
                 .border(2.dp, MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp))
         ) {
-            // Auto fit map view zoom & bounds to show the entire calculated route automatically
-            LaunchedEffect(computedRoutePoints) {
-                if (computedRoutePoints.isNotEmpty() && mapViewRef != null) {
-                    try {
-                        var minLat = Double.MAX_VALUE
-                        var maxLat = -Double.MAX_VALUE
-                        var minLng = Double.MAX_VALUE
-                        var maxLng = -Double.MAX_VALUE
-                        for (p in computedRoutePoints) {
-                            if (p.latitude < minLat) minLat = p.latitude
-                            if (p.latitude > maxLat) maxLat = p.latitude
-                            if (p.longitude < minLng) minLng = p.longitude
-                            if (p.longitude > maxLng) maxLng = p.longitude
-                        }
-                        val latDelta = maxLat - minLat
-                        val lngDelta = maxLng - minLng
-                        val marginFactor = 0.18 // Comfortable margin
-                        val finalMinLat = minLat - (latDelta * marginFactor)
-                        val finalMaxLat = maxLat + (latDelta * marginFactor)
-                        val finalMinLng = minLng - (lngDelta * marginFactor)
-                        val finalMaxLng = maxLng + (lngDelta * marginFactor)
-                        
-                        val box = org.osmdroid.util.BoundingBox(finalMaxLat, finalMaxLng, finalMinLat, finalMinLng)
-                        mapViewRef?.zoomToBoundingBox(box, true, 120)
-                    } catch (e: Exception) {
-                        val endLat = activeRoutingEndLat
-                        val endLng = activeRoutingEndLng
-                        if (userLatitude != null && userLongitude != null && endLat != null && endLng != null) {
-                            val midLat = (userLatitude!! + endLat) / 2.0
-                            val midLng = (userLongitude!! + endLng) / 2.0
-                            mapViewRef?.controller?.animateTo(org.osmdroid.util.GeoPoint(midLat, midLng))
-                            mapViewRef?.controller?.setZoom(13.5)
-                        }
-                    }
-                }
-            }
+            var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
             // Define gorgeous premium raster styles matching vector aesthetics
             val cartoVoyager = remember {
@@ -3047,60 +2854,99 @@ fun MapScreen(viewModel: MainViewModel) {
                 )
             }
 
-            // Custom Dynamic Markers Factory (drawing beautiful emojis in glossy badges)
+            // Arabic cardinal directions converter helper
+            fun getBearingDirectionArabic(bearing: Float): String {
+                val b = (bearing + 360f) % 360f
+                return when {
+                    b >= 337.5 || b < 22.5 -> "شمال ⬆️"
+                    b >= 22.5 && b < 67.5 -> "شمال شرق ↗️"
+                    b >= 67.5 && b < 112.5 -> "شرق ➡️"
+                    b >= 112.5 && b < 157.5 -> "جنوب شرق ↘️"
+                    b >= 157.5 && b < 202.5 -> "جنوب ⬇️"
+                    b >= 202.5 && b < 247.5 -> "جنوب غرب ↙️"
+                    b >= 247.5 && b < 292.5 -> "غرب ⬅️"
+                    b >= 292.5 && b < 337.5 -> "شمال غرب ↖️"
+                    else -> "شمال ⬆️"
+                }
+            }
+
+            // Custom Dynamic Markers Factory (drawing beautiful emojis in glossy badges / navigation chevron for user)
             fun createCustomMarkerIcon(context: android.content.Context, type: String): android.graphics.drawable.Drawable {
                 val density = context.resources.displayMetrics.density
-                val size = (42 * density).toInt()
+                val size = if (type == "user") (48 * density).toInt() else (46 * density).toInt()
                 val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
                 val canvas = android.graphics.Canvas(bitmap)
-                
-                if (type == "user_arrow") {
-                    val cx = size / 2f
-                    val cy = size / 2f
-                    val r = 14f * density
-                    val r_side = 10f * density
-                    
-                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                    
-                    // Draw semi-transparent blue background track glow
-                    paint.apply {
-                        style = android.graphics.Paint.Style.FILL
-                        color = 0xFF2196F3.toInt()
-                        alpha = 45
-                    }
-                    canvas.drawCircle(cx, cy, 18f * density, paint)
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
 
-                    // Draw the Arrow Path (pointing up)
-                    val path = android.graphics.Path().apply {
-                        moveTo(cx, cy - r)
-                        lineTo(cx - r_side, cy + r - 3 * density)
-                        lineTo(cx, cy + r * 0.25f)
-                        lineTo(cx + r_side, cy + r - 3 * density)
+                if (type == "user") {
+                    val scale = density
+                    val centerX = size / 2f
+                    val centerY = size / 2f
+
+                    // 1. Draw a realistic smooth drop-shadow for depth on the map (proportional offset)
+                    val shadowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = 0x88000000.toInt() // High-clarity shadow paint
+                        style = android.graphics.Paint.Style.FILL
+                    }
+                    val shadowPath = android.graphics.Path().apply {
+                        moveTo(centerX + 1.2f * scale, centerY - 16f * scale)
+                        lineTo(centerX + 15f * scale, centerY + 18f * scale)
+                        lineTo(centerX + 1.2f * scale, centerY + 11f * scale)
+                        lineTo(centerX - 13f * scale, centerY + 18f * scale)
                         close()
                     }
-                    
-                    // 1. Draw solid sleek blue fill
-                    paint.apply {
-                        style = android.graphics.Paint.Style.FILL
-                        color = 0xFF1E88E5.toInt()
-                        alpha = 255
-                    }
-                    canvas.drawPath(path, paint)
-                    
-                    // 2. Draw white crisp outline
-                    paint.apply {
-                        style = android.graphics.Paint.Style.STROKE
+                    canvas.drawPath(shadowPath, shadowPaint)
+
+                    // 2. Clear white outline mask wrapping the arrow to pop on both dark & light map backgrounds
+                    val outlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                         color = android.graphics.Color.WHITE
-                        strokeWidth = 2.5f * density
-                        strokeJoin = android.graphics.Paint.Join.ROUND
-                        strokeCap = android.graphics.Paint.Cap.ROUND
-                        alpha = 255
+                        style = android.graphics.Paint.Style.FILL
                     }
-                    canvas.drawPath(path, paint)
+                    val outlinePath = android.graphics.Path().apply {
+                        moveTo(centerX, centerY - 20f * scale)
+                        lineTo(centerX + 16f * scale, centerY + 18f * scale)
+                        lineTo(centerX, centerY + 10f * scale)
+                        lineTo(centerX - 16f * scale, centerY + 18f * scale)
+                        close()
+                    }
+                    canvas.drawPath(outlinePath, outlinePaint)
+
+                    // 3. Draw Left wing in a gorgeous light cyber-blue (reflective highlight side)
+                    val leftPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = 0xFF29B6F6.toInt() // Glowing GPS cyan-blue
+                        style = android.graphics.Paint.Style.FILL
+                    }
+                    val leftPath = android.graphics.Path().apply {
+                        moveTo(centerX, centerY - 17f * scale)
+                        lineTo(centerX - 13f * scale, centerY + 15f * scale)
+                        lineTo(centerX, centerY + 8f * scale)
+                        close()
+                    }
+                    canvas.drawPath(leftPath, leftPaint)
+
+                    // 4. Draw Right wing in a darker midnight-blue (3D realism shadow side)
+                    val rightPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = 0xFF0288D1.toInt() // Metallic dark-blue
+                        style = android.graphics.Paint.Style.FILL
+                    }
+                    val rightPath = android.graphics.Path().apply {
+                        moveTo(centerX, centerY - 17f * scale)
+                        lineTo(centerX + 13f * scale, centerY + 15f * scale)
+                        lineTo(centerX, centerY + 8f * scale)
+                        close()
+                    }
+                    canvas.drawPath(rightPath, rightPaint)
+
+                    // 5. Draw a small, minimalist high-tech red beacon dot in the center crease for that aviation-navigator feel
+                    val beaconPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = 0xFFFF5252.toInt() // Vivid highlight red
+                        style = android.graphics.Paint.Style.FILL
+                    }
+                    canvas.drawCircle(centerX, centerY + 2f * scale, 2.5f * scale, beaconPaint)
 
                     return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
                 }
-                
+
                 val colorInt = when (type) {
                     "clinic" -> 0xFF23B5D3.toInt()     // Vibrant Teal
                     "shop" -> 0xFF9966CC.toInt()       // Indigo/Pet Purple
@@ -3108,14 +2954,9 @@ fun MapScreen(viewModel: MainViewModel) {
                     "emergency" -> 0xFFD32F2F.toInt()  // Red alert
                     "grooming", "hotel" -> 0xFF009688.toInt() // Ocean Teal
                     "training", "park" -> 0xFF4CAF50.toInt() // Green nature
-                    "dog_allowed" -> 0xFFFF9800.toInt() // Warm Golden Orange for dog-friendly places
-                    "user" -> 0xFF2196F3.toInt()       // Blue current location dot
-                    "feeding" -> 0xFFE91E63.toInt()     // Warm Rose Pink for feeding spots
                     else -> 0xFF757575.toInt()         // Grey fallback
                 }
 
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                
                 // 1. Glow ring
                 paint.color = colorInt
                 paint.alpha = 45
@@ -3146,9 +2987,6 @@ fun MapScreen(viewModel: MainViewModel) {
                     "emergency" -> "🚨"
                     "grooming", "hotel" -> "🧼"
                     "training", "park" -> "🐾"
-                    "dog_allowed" -> "🐕"
-                    "user" -> "🐶"
-                    "feeding" -> "🍲"
                     else -> "📍"
                 }
                 
@@ -3179,10 +3017,6 @@ fun MapScreen(viewModel: MainViewModel) {
                     org.osmdroid.config.Configuration.getInstance().userAgentValue = ctx.packageName
                     
                     MapView(ctx).apply {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                            this.isForceDarkAllowed = false
-                        }
-                        
                         setMultiTouchControls(true)
                         setBuiltInZoomControls(false)
                         
@@ -3227,48 +3061,37 @@ fun MapScreen(viewModel: MainViewModel) {
                         mapView.setTileSource(currentTileSource)
                     }
 
-                    // 0. Enable Long/Single Tapping to set Destination arbitrarily
-                    val mapEventsOverlay = org.osmdroid.views.overlay.MapEventsOverlay(object : org.osmdroid.events.MapEventsReceiver {
-                        override fun singleTapConfirmedHelper(p: org.osmdroid.util.GeoPoint): Boolean {
-                            activeRoutingEndLat = p.latitude
-                            activeRoutingEndLng = p.longitude
-                            activeRoutingTitle = "نقطة مخصصة على الخريطة 📍"
-                            
-                            selectedPlace = PetPlace(
-                                id = "custom_tap",
-                                name = "وجهة جغرافية مخصصة 📍",
-                                category = "موقع مخصص",
-                                type = "custom",
-                                lat = p.latitude,
-                                lng = p.longitude,
-                                desc = "تم التحديد باللمس المباشر على الخريطة. يمكنك رسم مسار حقيقي فوراً من موقعك الحالي.",
-                                rating = "حقيقي",
-                                reviews = "مباشر",
-                                phone = "-",
-                                hours = "متاح دائماً 🗺️",
-                                imageUrl = "https://images.unsplash.com/photo-1524661135-423995f22d0b?w=400&auto=format&fit=crop&q=60"
-                            )
-                            return true
-                        }
-                        override fun longPressHelper(p: org.osmdroid.util.GeoPoint): Boolean {
-                            return false
-                        }
-                    })
-                    mapView.overlays.add(mapEventsOverlay)
-
                     // 1. Enable Live phone's compass overlay nicely rotated facing direction
-                    // Remained disabled to prevent redundant sensor listener leaks on fast recompositions: direction is smoothly rendered on user marker rotation instead.
+                    try {
+                        val compassOverlay = org.osmdroid.views.overlay.compass.CompassOverlay(
+                            mapView.context,
+                            org.osmdroid.views.overlay.compass.InternalCompassOrientationProvider(mapView.context),
+                            mapView
+                        ).apply {
+                            enableCompass()
+                            // Move compass down to prevent overlap with Map Styles
+                            setCompassCenter(32f * mapView.context.resources.displayMetrics.density, 75f * mapView.context.resources.displayMetrics.density)
+                        }
+                        mapView.overlays.add(compassOverlay)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MapScreen", "Error loading compass: ${e.message}")
+                    }
 
-                    // 2. Clear & Draw colored Polyline route line path with OSMDroid Polyline from computedRoutePoints (Mapbox)
+                    // 2. Clear & Draw colored Polyline route line path to selected animal care
                     val userLat = userLatitude
                     val userLng = userLongitude
-                    if (computedRoutePoints.isNotEmpty() && userLat != null && userLng != null) {
+                    val selected = selectedPlace
+                    if (selected != null && userLat != null && userLng != null) {
                         val routeLine = org.osmdroid.views.overlay.Polyline(mapView).apply {
-                            setPoints(computedRoutePoints)
+                            val points = listOf(
+                                org.osmdroid.util.GeoPoint(userLat, userLng),
+                                org.osmdroid.util.GeoPoint(selected.lat, selected.lng)
+                            )
+                            setPoints(points)
                             
                             outlinePaint.apply {
-                                color = 0xFF1565C0.toInt() // Blue neon modern path
-                                strokeWidth = 11f
+                                color = 0xFF1E88E5.toInt() // Blue neon modern path
+                                strokeWidth = 10f
                                 strokeCap = android.graphics.Paint.Cap.ROUND
                                 isAntiAlias = true
                             }
@@ -3284,15 +3107,17 @@ fun MapScreen(viewModel: MainViewModel) {
                             title = place.name
                             snippet = place.category
                             
+                            // شرح استخدام أيقونة مخصصة (Custom Drawable icon like a dog or cat icon):
+                            // لاستخدام ملف drawable مخصص من مجلد التطبيق (مثال: ic_dog أو ic_cat):
+                            // val customIcon = androidx.core.content.ContextCompat.getDrawable(mapView.context, R.drawable.ic_custom_dog)
+                            // icon = customIcon
+                            
                             // نستخدم هنا المولد التفاعلي المصمم لإنتاج أيقونات مميزة بألوان متناسقة لكل نوع (عيادة، متجر، ملجأ) لتفادي أي كراش
                             icon = createCustomMarkerIcon(mapView.context, place.type)
                             
                             setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_CENTER)
                             setOnMarkerClickListener { m, _ ->
                                 selectedPlace = place
-                                activeRoutingEndLat = place.lat
-                                activeRoutingEndLng = place.lng
-                                activeRoutingTitle = place.name
                                 mapView.controller.animateTo(m.position)
                                 m.showInfoWindow()
                                 true
@@ -3301,29 +3126,16 @@ fun MapScreen(viewModel: MainViewModel) {
                         mapView.overlays.add(marker)
                     }
                     
-                    // ٤. علامة الموقع الحالي التفاعلية والنباضة مع سهم اتجاه الهاتف الحقيقي (Live Pulsing Custom User Marker - Start Marker)
+                    // ٤. علامة الموقع الحالي التفاعلية والنباضة مع سهم التوجيه الدوار للأقمار الصناعية (Live Navigational Pulsing User Marker with Heading)
                     if (userLat != null && userLng != null) {
                         val userMarker = org.osmdroid.views.overlay.Marker(mapView).apply {
                             position = org.osmdroid.util.GeoPoint(userLat, userLng)
-                            title = "موقعي الحالي (سهم الاتجاه والبوصلة) 🟢"
-                            icon = createCustomMarkerIcon(mapView.context, "user_arrow")
+                            title = "موقعك الحالي - الاتجاه: ${getBearingDirectionArabic(deviceBearing)} 🧭"
+                            icon = createCustomMarkerIcon(mapView.context, "user")
                             setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_CENTER)
-                            rotation = deviceHeading
+                            rotation = -deviceBearing // Rotate live with precision compass azimuth values
                         }
                         mapView.overlays.add(userMarker)
-                    }
-
-                    // ٥. علامة الوجهة الرسمية (نقطة النهاية)
-                    val endLat = activeRoutingEndLat
-                    val endLng = activeRoutingEndLng
-                    if (endLat != null && endLng != null) {
-                        val endMarker = org.osmdroid.views.overlay.Marker(mapView).apply {
-                            position = org.osmdroid.util.GeoPoint(endLat, endLng)
-                            title = activeRoutingTitle ?: "نقطة النهاية 🏁"
-                            icon = createCustomMarkerIcon(mapView.context, "emergency")
-                            setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_CENTER)
-                        }
-                        mapView.overlays.add(endMarker)
                     }
                     
                     mapView.invalidate()
@@ -3401,17 +3213,26 @@ fun MapScreen(viewModel: MainViewModel) {
                     val lng = userLongitude
                     if (lat != null && lng != null && mapViewRef != null) {
                         mapViewRef?.controller?.animateTo(org.osmdroid.util.GeoPoint(lat, lng))
-                        mapViewRef?.controller?.setZoom(16.5)
+                        mapViewRef?.controller?.setZoom(16.0)
                         mapCenterLat = lat
                         mapCenterLng = lng
-                        android.widget.Toast.makeText(context, "تم الانتقال لموقعك الحقيقي بنجاح 🎯", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(context, "تم الانتقال إلى إحداثيات موقعك الحقيقي الدقيق 🎯", android.widget.Toast.LENGTH_SHORT).show()
+                        
+                        // Dynamic Fetch around current GPS coordinates
+                        fetchNearbyPlacesFromOverpass(lat, lng) { results ->
+                            fetchedPlacesList = results
+                        }
                     } else {
-                        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                        val isGpsOn = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
-                        if (!isGpsOn) {
-                            android.widget.Toast.makeText(context, "يرجى تشغيل الـ GPS أولاً لتحديد موقعك الجغرافي بدقة 🛰️", android.widget.Toast.LENGTH_LONG).show()
+                        val mgr = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager
+                        val isGeonEnabled = mgr?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
+                        if (!isGeonEnabled) {
+                            android.widget.Toast.makeText(context, "⚠️ الـ GPS مغلق بالجهاز! يرجى تشغيله من إعدادات الهاتف والمحاولة مجدداً.", android.widget.Toast.LENGTH_LONG).show()
+                            try {
+                                val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                context.startActivity(intent)
+                            } catch (e: Exception) {}
                         } else {
-                            android.widget.Toast.makeText(context, "جاري استقبال إشارة GPS عالية الدقة... الرجاء الانتظار 📡", android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, "⚠️ جاري البحث عن إشارة GPS الدقيقة والاتصال بالأقمار الصناعية... يرجى الانتظار والوقوف في مكان مكشوف.", android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
                 },
@@ -3420,199 +3241,127 @@ fun MapScreen(viewModel: MainViewModel) {
                 shape = CircleShape,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = if (selectedPlace != null) 340.dp else if (computedRoutePoints.isNotEmpty()) 96.dp else 16.dp, end = 16.dp)
+                    .padding(bottom = if (selectedPlace != null) 220.dp else 16.dp, end = 16.dp)
                     .size(48.dp)
             ) {
                 Icon(Icons.Default.MyLocation, contentDescription = "تحديد موقعي")
             }
 
-            // Real-time GPS Diagnostics panel
-            var showDebugPanel by remember { mutableStateOf(true) }
-            Box(
+            // BEAUTIFUL GPS DEBUGGER & STATUS PANEL
+            var isExpanded by remember { mutableStateOf(false) }
+            Card(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(16.dp)
-                    .widthIn(max = 280.dp)
+                    .padding(start = 16.dp, bottom = if (selectedPlace != null) 235.dp else 16.dp)
+                    .widthIn(max = 260.dp)
+                    .shadow(6.dp, RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
             ) {
-                if (showDebugPanel) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primaryContainer),
-                        modifier = Modifier.shadow(8.dp, RoundedCornerShape(12.dp))
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isExpanded = !isExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(if (userLatitude != null) Color(0xFF4CAF50) else Color(0xFFFF9800))
-                                    )
-                                    Text("بيانات تصحيح الـ GPS 🛰️", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                                }
-                                IconButton(
-                                    onClick = { showDebugPanel = false },
-                                    modifier = Modifier.size(20.dp)
-                                ) {
-                                    Icon(Icons.Default.Close, contentDescription = "إغلاق", modifier = Modifier.size(12.dp))
-                                }
-                            }
-                            
-                            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                            
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("خط العرض:", fontSize = 10.sp, color = Color.Gray)
-                                Text(userLatitude?.let { String.format("%.6f", it) } ?: "يبحث...", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("خط الطول:", fontSize = 10.sp, color = Color.Gray)
-                                Text(userLongitude?.let { String.format("%.6f", it) } ?: "يبحث...", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("دقة موقعك:", fontSize = 10.sp, color = Color.Gray)
-                                Text(locationAccuracy?.let { "${String.format("%.1f", it)} متر" } ?: "غير متوفر", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = if (locationAccuracy != null && locationAccuracy!! <= 50f) Color(0xFF4CAF50) else Color(0xFFFF9800))
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("حالة الـ GPS:", fontSize = 10.sp, color = Color.Gray)
-                                Text(if (isGpsActive) "مفعّل 🟢" else "مغلق 🔴", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = if (isGpsActive) Color(0xFF4CAF50) else Color(0xFFD32F2F))
-                            }
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("إذن الموقع:", fontSize = 10.sp, color = Color.Gray)
-                                val statusText = when {
-                                    finePermissionGranted -> "صلاحية دقيقة (GPS) 🟢"
-                                    coarsePermissionGranted -> "تقريبية فقط (مرفوضة) ⚠️"
-                                    else -> "مرفوض 🔴"
-                                }
-                                Text(statusText, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                            }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text("بيانات الـ GPS الحقيقية لموقعك 🛰️", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                         }
+                        Text(if (isExpanded) "▲" else "▼", fontSize = 10.sp, color = Color.Gray)
                     }
-                } else {
-                    Button(
-                        onClick = { showDebugPanel = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), contentColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) {
-                        Text("إظهار بيانات الـ GPS 🛰️", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    if (isExpanded) {
+                        androidx.compose.material3.HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("خط العرض:", fontSize = 10.sp, color = Color.Gray)
+                            Text(userLatitude?.let { String.format("%.6f", it) } ?: "جاري رصد الأقمار...", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("خط الطول:", fontSize = 10.sp, color = Color.Gray)
+                            Text(userLongitude?.let { String.format("%.6f", it) } ?: "جاري رصد الأقمار...", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("دقة الموقع:", fontSize = 10.sp, color = Color.Gray)
+                            Text(gpsAccuracy?.let { "${String.format("%.1f", it)} متر" } ?: "لم يتم التحديد بعد", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("حالة الـ GPS بالجهاز:", fontSize = 10.sp, color = Color.Gray)
+                            Text(if (isGpsEnabled) "مفعّل ✅" else "معطل ❌", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isGpsEnabled) Color(0xFF2E7D32) else Color.Red)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("إذن تحديد الموقع:", fontSize = 10.sp, color = Color.Gray)
+                            Text(if (hasLocationPermission) "مسموح ✅" else "مرفوض ❌", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (hasLocationPermission) Color(0xFF2E7D32) else Color.Red)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("اتجاه البوصلة الحالي:", fontSize = 10.sp, color = Color.Gray)
+                            Text("${Math.round(deviceBearing)}° ${getBearingDirectionArabic(deviceBearing)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
 
-            // High-accuracy satellite load screen instructions and telemetry overview
-            if (userLatitude == null || userLongitude == null) {
-                Box(
+            // FLOATING PENDING SATELLITE WARNING BANNER
+            if (userLatitude == null) {
+                Card(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f))
-                        .clickable(enabled = false) {},
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 16.dp, vertical = 75.dp)
+                        .shadow(8.dp, RoundedCornerShape(14.dp)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.padding(24.dp)
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 4.dp,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        
-                        Text(
-                            text = if (!finePermissionGranted && !coarsePermissionGranted) "صلاحية الوصول للموقع مطلوبة 📡"
-                                   else if (!isGpsActive) "ميزة الـ GPS معطلة بالجهاز 🚨"
-                                   else "جاري الاتصال بالأقمار الاصطناعية... 📡",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center
-                        )
-                        
-                        Text(
-                            text = if (!finePermissionGranted && !coarsePermissionGranted) "يرجى منح صلاحية الوصول للموقع الجغرافي ليتمكن تطبيق Safe-Paws من معرفة مكانك الحقيقي والدقيق على الخريطة."
-                                   else if (!isGpsActive) "يرجى تمكين نظام الـ GPS بدقة عالية في إعدادات جهازك. تم تعطيل تحديد المواقع التقريبية القائمة على الـ IP لتقديم أسرع استجابة إنقاذ."
-                                   else "الرجاء الانتظار لحين التقاط إشارة GPS حقيقية عالية الدقة (أقل من 50 متر). يفضل التواجد بمكان مكشوف لتسريع الالتقاط.",
-                            fontSize = 12.sp,
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 18.sp
-                        )
-                        
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("الحافة التقنية للاتصال بالأقمار الاصطناعية 🛠️", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("صلاحية الـ GPS بالجهاز:", fontSize = 11.sp)
-                                    Text(if (finePermissionGranted) "مرخصة وفعالة ✅" else "غير مسموحة ❌", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (finePermissionGranted) Color(0xFF4CAF50) else Color(0xFFD32F2F))
-                                }
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("مستشعر الـ GPS المادي:", fontSize = 11.sp)
-                                    Text(if (isGpsActive) "نشط ومفتوح ✅" else "مغلق ومطفي ❌", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isGpsActive) Color(0xFF4CAF50) else Color(0xFFD32F2F))
-                                }
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text("دقة استقبال الإحداثيات بالجهاز:", fontSize = 11.sp)
-                                    val acc = locationAccuracy
-                                    Text(if (acc != null) "$acc متر (غير كافية)" else "لا توجد إشارة ثنائية الأبعاد حالياً", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                        }
-                        
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (!finePermissionGranted && !coarsePermissionGranted) {
-                                Button(
-                                    onClick = {
-                                        permissionLauncher.launch(
-                                            arrayOf(
-                                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                                Manifest.permission.ACCESS_COARSE_LOCATION
-                                            )
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("منح صلاحية الموقع الجغرافي 📍", fontSize = 12.sp)
-                                }
-                            } else {
-                                OutlinedButton(
-                                    onClick = { checkSettingsAndPermissions() },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("فحص الحالة 🔄", fontSize = 11.sp)
-                                }
-                                
-                                Button(
-                                    onClick = {
-                                        try {
-                                            val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {}
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("تشغيل الـ GPS ⚙️", fontSize = 11.sp)
-                                }
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = "🛰️ بانتظار إشارة GPS حقيقية عالية الدقة...",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "تم تعطيل المحاكاة وخوادم تحديد المواقع التقريبية تماماً حفاظاً على سلامتك. يرجى الوقوف في مكان مكشوف أو تفعيل خدمة الـ GPS الهاتفية والانتظار لقفل القمر الصناعي.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 14.sp
+                        )
+                        if (!isGpsEnabled) {
+                            Button(
+                                onClick = {
+                                    try {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(context, "الرجاء فتح إعدادات مستوى الموقع يدوياً.", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Text("تفعيل مستوى الموقع (GPS) ⚙️", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
                     }
@@ -3625,7 +3374,6 @@ fun MapScreen(viewModel: MainViewModel) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 460.dp)
                         .align(Alignment.BottomCenter)
                         .padding(12.dp)
                         .shadow(16.dp, RoundedCornerShape(16.dp)),
@@ -3633,9 +3381,7 @@ fun MapScreen(viewModel: MainViewModel) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState()),
+                        modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         // Header info
@@ -3657,61 +3403,35 @@ fun MapScreen(viewModel: MainViewModel) {
                                     color = MaterialTheme.colorScheme.secondary
                                 )
                             }
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp)
                             ) {
-                                // Star Favorite Toggle
-                                val isFav = favoritePlaces.contains(place.id)
-                                IconButton(
-                                    onClick = {
-                                        if (isFav) {
-                                            favoritePlaces = favoritePlaces - place.id
-                                            android.widget.Toast.makeText(context, "تمت الإزالة من المفضلة 🤍", android.widget.Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            favoritePlaces = favoritePlaces + place.id
-                                            android.widget.Toast.makeText(context, "تم الحفظ في المفضلة ⭐", android.widget.Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Favorite,
-                                        contentDescription = "المفضلة",
-                                        tint = if (isFav) Color.Red else Color.LightGray,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = "شريك معتمد 🤝",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "شريك معتمد 🤝",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
                             }
                         }
 
-                        // Rating, Hours, Phone, Distance, and Photo
+                        // Rating, Hours, Phone and Photo
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.Top
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             AsyncImage(
                                 model = place.imageUrl,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .size(80.dp)
+                                    .size(70.dp)
                                     .clip(RoundedCornerShape(12.dp))
                             )
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -3733,62 +3453,8 @@ fun MapScreen(viewModel: MainViewModel) {
                                         color = Color.Gray
                                     )
                                 }
-
-                                // Dynamic distance calculation context display
-                                val distanceContext = remember(userLatitude, userLongitude, place.lat, place.lng) {
-                                    if (userLatitude != null && userLongitude != null) {
-                                        val dist = calculateDistance(userLatitude!!, userLongitude!!, place.lat, place.lng)
-                                        if (dist < 1.0) {
-                                            "📍 على بُعد ${(dist * 1000).toInt()} متر منك"
-                                        } else {
-                                            "📍 على بُعد ${String.format("%.1f", dist)} كم منك"
-                                        }
-                                    } else {
-                                        "📍 المسافة: يرجى تفعيل تحديد موقعك"
-                                    }
-                                }
-                                Text(distanceContext, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 Text("⏱️ دوام العمل: ${place.hours}", fontSize = 11.sp)
-                                Text("📞 الهاتف: ${place.phone}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // Structured address and website metadata badges
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (place.address.isNotBlank()) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                        .padding(8.dp)
-                                ) {
-                                    Icon(Icons.Default.Place, contentDescription = "العنوان", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                    Text("المكان: ${place.address}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-
-                            if (place.website.isNotBlank()) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(place.website))
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                android.widget.Toast.makeText(context, "لم نتمكن من فتح المتصفح: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                        .padding(8.dp)
-                                ) {
-                                    Icon(Icons.Default.Info, contentDescription = "الموقع الإلكتروني", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                    Text("الموقع: ${place.website} 🌐", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
-                                }
+                                Text("📞 للتواصل: ${place.phone}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -3797,298 +3463,43 @@ fun MapScreen(viewModel: MainViewModel) {
                             text = place.desc,
                             fontSize = 11.sp,
                             color = Color.DarkGray,
-                            maxLines = 3,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        // Action buttons with Mapbox routing controls and metrics
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                        Text("وسيلة التنقل المفضلة للـ Rescue 🧭", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        // Action buttons
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf(
-                                "mapbox/driving" to "🚗 قيادة",
-                                "mapbox/walking" to "🚶 مشي",
-                                "mapbox/cycling" to "🚴 دراجة"
-                            ).forEach { (profileKey, label) ->
-                                val isSelected = routingProfile == profileKey
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { routingProfile = profileKey },
-                                    label = { Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-
-                        if (isFetchingRoute) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("جاري حساب المسار الحقيقي بدقة... 🗺️", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-
-                        if (routeError != null) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(8.dp).fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Column {
-                                        Text("فشل جلب المسار الحقيقي من الخرائط ⚠️", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
-                                        Text(routeError ?: "", fontSize = 9.sp, color = Color.Gray)
-                                    }
-                                }
-                            }
-                        }
-
-                        if (routeDistanceKm != null && routeDurationMinutes != null) {
-                            val dist = routeDistanceKm!!
-                            val mins = routeDurationMinutes!!
-
-                            val etaCalendar = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MINUTE, mins.toInt()) }
-                            val etaFormat = java.text.SimpleDateFormat("hh:mm a", java.util.Locale("ar"))
-                            val etaString = etaFormat.format(etaCalendar.time)
-
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp).fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("تفاصيل الرحلة الفعلية 🗺️", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                            Text("📍 المسافة: ${String.format("%.2f", dist)} كم", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            Text("⏱️ مدة الرحلة: ${String.format("%.0f", mins)} دقيقة", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text("الوصول المتوقع", fontSize = 9.sp, color = Color.Gray)
-                                        Text(etaString, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Dynamic Interactive Actions Grid
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
                             Button(
                                 onClick = {
-                                    android.widget.Toast.makeText(context, "تم رسم المسار بنجاح! يسلك الطرق الحقيقية 🚀", android.widget.Toast.LENGTH_SHORT).show()
-                                    // Manually force auto-focus zoom on the map route points when clicking
-                                    if (computedRoutePoints.isNotEmpty() && mapViewRef != null) {
-                                        try {
-                                            var minLat = Double.MAX_VALUE
-                                            var maxLat = -Double.MAX_VALUE
-                                            var minLng = Double.MAX_VALUE
-                                            var maxLng = -Double.MAX_VALUE
-                                            for (p in computedRoutePoints) {
-                                                if (p.latitude < minLat) minLat = p.latitude
-                                                if (p.latitude > maxLat) maxLat = p.latitude
-                                                if (p.longitude < minLng) minLng = p.longitude
-                                                if (p.longitude > maxLng) maxLng = p.longitude
-                                            }
-                                            val latDelta = maxLat - minLat
-                                            val lngDelta = maxLng - minLng
-                                            val marginFactor = 0.18
-                                            val finalMinLat = minLat - (latDelta * marginFactor)
-                                            val finalMaxLat = maxLat + (latDelta * marginFactor)
-                                            val finalMinLng = minLng - (lngDelta * marginFactor)
-                                            val finalMaxLng = maxLng + (lngDelta * marginFactor)
-
-                                            val box = org.osmdroid.util.BoundingBox(finalMaxLat, finalMaxLng, finalMinLat, finalMinLng)
-                                            mapViewRef?.zoomToBoundingBox(box, true, 120)
-                                        } catch (e: Exception) {
-                                            val endLat = activeRoutingEndLat
-                                            val endLng = activeRoutingEndLng
-                                            if (userLatitude != null && userLongitude != null && endLat != null && endLng != null) {
-                                                val midLat = (userLatitude!! + endLat) / 2.0
-                                                val midLng = (userLongitude!! + endLng) / 2.0
-                                                mapViewRef?.controller?.animateTo(org.osmdroid.util.GeoPoint(midLat, midLng))
-                                                mapViewRef?.controller?.setZoom(13.5)
-                                            }
-                                        }
-                                    }
-
-                                    // Collapse the big sheet so map can be fully viewed
-                                    selectedPlace = null
+                                    android.widget.Toast.makeText(context, "جاري إطلاق محاكاة المسار ونقاط الاتجاهات...", android.widget.Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.weight(1.5f),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp)
+                                modifier = Modifier.weight(2f),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("🗺️ رسم المسار", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("🚗 رسم المسار", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
 
-                            // Real Phone Call Intent
                             Button(
                                 onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${place.phone}"))
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "جاري فتح الاتصال بـ ${place.name}...", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
+                                    android.widget.Toast.makeText(context, "جاري الاتصال بـ ${place.name}...", android.widget.Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
-                                modifier = Modifier.weight(1.2f),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp)
-                            ) {
-                                Text("📞 اتصال", fontSize = 11.sp)
-                            }
-
-                            // Opened In External GPS Systems (Directions)
-                            Button(
-                                onClick = {
-                                    try {
-                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:${place.lat},${place.lng}?q=${Uri.encode(place.name)}"))
-                                        context.startActivity(mapIntent)
-                                    } catch (e: Exception) {
-                                        val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}"))
-                                        context.startActivity(fallbackIntent)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer),
-                                modifier = Modifier.weight(1.3f),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp)
-                            ) {
-                                Text("🧭 اتجاهات", fontSize = 11.sp)
-                            }
-                        }
-
-                        // Secondary actions: Share and Close
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // Native Intent Share sheet
-                            OutlinedButton(
-                                onClick = {
-                                    try {
-                                        val shareText = "ينصح بزيارة موقع الحيوانات هذا بالمغرب 🇲🇦🐾\n\nالاسم: ${place.name}\nالتصنيف: ${place.category}\nالعنوان: ${place.address}\nالهاتف: ${place.phone}\nموقع ويب: ${place.website}\n\nالإحداثيات: ${place.lat}, ${place.lng}\nرسم المسار: https://www.openstreetmap.org/?mlat=${place.lat}&mlon=${place.lng}"
-                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_TEXT, shareText)
-                                        }
-                                        context.startActivity(Intent.createChooser(shareIntent, "مشاركة موقع أليف"))
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "فشل في إطلاق واجهة المشاركة: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("🔗 مشاركة", fontSize = 11.sp)
+                                Text("📞 اتصل", fontSize = 12.sp)
                             }
 
                             OutlinedButton(
-                                onClick = {
-                                    selectedPlace = null
-                                    activeRoutingEndLat = null
-                                    activeRoutingEndLng = null
-                                    computedRoutePoints = emptyList()
-                                },
+                                onClick = { selectedPlace = null },
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("إغلاق", fontSize = 11.sp)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Minimalist Floating Route Banner when the details card is closed but a route is active
-            if (selectedPlace == null && computedRoutePoints.isNotEmpty() && routeDistanceKm != null && routeDurationMinutes != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .padding(12.dp)
-                        .shadow(8.dp, RoundedCornerShape(12.dp)),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "المسار الحقيقي النشط 🗺️",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = "📍 ${String.format("%.2f", routeDistanceKm)} كم",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "⏱️ ${String.format("%.0f", routeDurationMinutes)} دقيقة",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
-                        
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val profileLabel = when (routingProfile) {
-                                "mapbox/walking" -> "🚶"
-                                "mapbox/cycling" -> "🚴"
-                                else -> "🚗"
-                            }
-                            Text(profileLabel, fontSize = 16.sp)
-                            
-                            Button(
-                                onClick = {
-                                    activeRoutingEndLat = null
-                                    activeRoutingEndLng = null
-                                    computedRoutePoints = emptyList()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                Text("إلغاء المسار", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("إغلاق", fontSize = 12.sp)
                             }
                         }
                     }
@@ -4476,30 +3887,3 @@ fun BulletPoint(text: String) {
         Text(text, fontSize = 12.sp, lineHeight = 16.sp)
     }
 }
-
-fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-    val theta = lon1 - lon2
-    var dist = Math.sin(Math.toRadians(lat1)) * Math.sin(Math.toRadians(lat2)) +
-            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.cos(Math.toRadians(theta))
-    dist = Math.acos(dist)
-    dist = Math.toDegrees(dist)
-    dist = dist * 60 * 1.1515 * 1.609344
-    return if (dist.isNaN()) 0.0 else dist
-}
-
-data class PetPlace(
-    val id: String,
-    val name: String,
-    val category: String,
-    val type: String,
-    val lat: Double,
-    val lng: Double,
-    val desc: String,
-    val rating: String = "4.7",
-    val reviews: String = "25",
-    val phone: String = "",
-    val hours: String = "",
-    val imageUrl: String = "",
-    val website: String = "",
-    val address: String = ""
-)
