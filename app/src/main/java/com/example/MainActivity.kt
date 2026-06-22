@@ -1923,6 +1923,317 @@ fun fetchIpLocation(onResult: (Double, Double) -> Unit) {
     }
 }
 
+// Clean helper to parse a Firestore Feature JSON object into a PetPlace
+fun parseFirestoreFeature(
+    featObj: org.json.JSONObject,
+    docIndex: Int,
+    featIndex: Int
+): PetPlace? {
+    val geometryObj = featObj.optJSONObject("geometry")?.optJSONObject("mapValue")?.optJSONObject("fields") ?: return null
+    val propertiesObj = featObj.optJSONObject("properties") ?: return null
+    
+    val coordArray = geometryObj.optJSONObject("coordinates")?.optJSONObject("arrayValue")?.optJSONArray("values") ?: return null
+    if (coordArray.length() < 2) return null
+    
+    val lngValObj = coordArray.optJSONObject(0)
+    val latValObj = coordArray.optJSONObject(1)
+    
+    val lng = lngValObj?.optDouble("doubleValue") ?: lngValObj?.optString("integerValue")?.toDoubleOrNull() ?: lngValObj?.optString("stringValue")?.toDoubleOrNull() ?: return null
+    val lat = latValObj?.optDouble("doubleValue") ?: latValObj?.optString("integerValue")?.toDoubleOrNull() ?: latValObj?.optString("stringValue")?.toDoubleOrNull() ?: return null
+    
+    val propFields = propertiesObj.optJSONObject("mapValue")?.optJSONObject("fields")
+    
+    val name = when {
+        propFields?.has("الاسم") == true -> propFields.optJSONObject("الاسم")?.optString("stringValue") ?: ""
+        propFields?.has("الاسم (عربي)") == true -> propFields.optJSONObject("الاسم (عربي)")?.optString("stringValue") ?: ""
+        propFields?.has("name:ar") == true -> propFields.optJSONObject("name:ar")?.optString("stringValue") ?: ""
+        propFields?.has("name") == true -> propFields.optJSONObject("name")?.optString("stringValue") ?: ""
+        propFields?.has("Name (EN)") == true -> propFields.optJSONObject("Name (EN)")?.optString("stringValue") ?: ""
+        propFields?.has("title") == true -> propFields.optJSONObject("title")?.optString("stringValue") ?: ""
+        else -> "معلم مضاف 📍"
+    }.ifBlank { "معلم مضاف 📍" }
+    
+    val amenity = propFields?.optJSONObject("amenity")?.optString("stringValue") ?: ""
+    val shop = propFields?.optJSONObject("shop")?.optString("stringValue") ?: ""
+    
+    val lowercaseName = name.lowercase()
+    val lowercaseAmenity = amenity.lowercase()
+    val lowercaseShop = shop.lowercase()
+    
+    val (category, type) = when {
+        lowercaseAmenity.contains("veterinary") || 
+        lowercaseAmenity.contains("vet") || 
+        lowercaseName.contains("طبيب") || 
+        lowercaseName.contains("بيطر") || 
+        lowercaseName.contains("عيادة") || 
+        lowercaseName.contains("دكتور") || 
+        lowercaseName.contains("vet") || 
+        lowercaseName.contains("clinic") -> {
+            Pair("عيادات بيطرية 🏥", "clinic")
+        }
+        lowercaseShop.contains("pet") || 
+        lowercaseShop.contains("grooming") || 
+        lowercaseName.contains("متجر") || 
+        lowercaseName.contains("محل") || 
+        lowercaseName.contains("مستلزمات") || 
+        lowercaseName.contains("shop") || 
+        lowercaseName.contains("store") || 
+        lowercaseName.contains("market") || 
+        lowercaseName.contains("pet") -> {
+            Pair("متاجر ومستلزمات 🛒", "shop")
+        }
+        lowercaseAmenity.contains("shelter") || 
+        lowercaseName.contains("ملجأ") || 
+        lowercaseName.contains("إيواء") || 
+        lowercaseName.contains("adopt") -> {
+            Pair("الملاجئ والتبني 🐶", "shelter")
+        }
+        lowercaseAmenity.contains("boarding") || 
+        lowercaseName.contains("فندق") || 
+        lowercaseName.contains("فنادق") || 
+        lowercaseName.contains("رعاية") -> {
+            Pair("العناية والفنادق ✂️", "grooming")
+        }
+        else -> {
+            Pair("متاجر ومستلزمات 🛒", "shop")
+        }
+    }
+    
+    val street = propFields?.optJSONObject("addr:street")?.optString("stringValue") ?: ""
+    val city = propFields?.optJSONObject("addr:city")?.optString("stringValue") ?: ""
+    val phone = propFields?.optJSONObject("phone")?.optString("stringValue") ?: ""
+    val website = propFields?.optJSONObject("website")?.optString("stringValue") ?: ""
+    
+    val descBuilder = java.lang.StringBuilder()
+    if (city.isNotBlank()) descBuilder.append("المدينة: $city | ")
+    if (street.isNotBlank()) descBuilder.append("الشارع: $street | ")
+    if (phone.isNotBlank()) descBuilder.append("الهاتف: $phone | ")
+    if (website.isNotBlank()) descBuilder.append("الموقع: $website")
+    
+    val desc = descBuilder.toString().removeSuffix(" | ").trim().ifBlank { 
+        "موقع تفاعلي مضاف لخدمة ورعاية الحيوانات الأليفة."
+    }
+    
+    return PetPlace(
+        id = "live_firestore_${featIndex}_${docIndex}",
+        name = name,
+        category = category,
+        type = type,
+        lat = lat,
+        lng = lng,
+        desc = desc,
+        rating = "5.0",
+        reviews = "موقع",
+        phone = phone.ifBlank { "غير متوفر" },
+        hours = "٢٤ ساعة",
+        imageUrl = "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"
+    )
+}
+
+// Clean parser tool to fetch and convert geojson points from specified url path
+fun fetchGeoJsonFromUrl(url: String, onResult: (List<PetPlace>) -> Unit) {
+    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val list = mutableListOf<PetPlace>()
+        try {
+            val apiKey = "AIzaSyAu2iWAA8WmMdkMRAC95FneRF-oV8Hafh4"
+            val runQueryUrl = "https://firestore.googleapis.com/v1/projects/corded-principle-5dzmz/databases/ai-studio-ca385af0-d7d1-4e5a-90f0-6ed01800913a/documents:runQuery?key=$apiKey"
+            
+            val queryBodyJson = """
+            {
+              "structuredQuery": {
+                "from": [
+                  {
+                    "collectionId": "layers",
+                    "allDescendants": false
+                  }
+                ]
+              }
+            }
+            """.trimIndent()
+            
+            val body = okhttp3.RequestBody.create(null, queryBodyJson)
+            val request = okhttp3.Request.Builder()
+                .url(runQueryUrl)
+                .post(body)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .header("Accept", "application/json, text/plain, */*")
+                .build()
+                
+            val response = client.newCall(request).execute()
+            val responseStr = response.body?.string() ?: ""
+            if (responseStr.isNotBlank() && responseStr.trim().startsWith("[")) {
+                val rootArr = org.json.JSONArray(responseStr)
+                for (docIndex in 0 until rootArr.length()) {
+                    val layerObj = rootArr.optJSONObject(docIndex) ?: continue
+                    val docObj = layerObj.optJSONObject("document") ?: continue
+                    val fieldsObj = docObj.optJSONObject("fields") ?: continue
+                    
+                    val isChunked = fieldsObj.optJSONObject("isChunked")?.optBoolean("booleanValue") ?: false
+                    
+                    if (!isChunked) {
+                        val dataMapObj = fieldsObj.optJSONObject("data")?.optJSONObject("mapValue")?.optJSONObject("fields") ?: continue
+                        val featuresArrObj = dataMapObj.optJSONObject("features")?.optJSONObject("arrayValue")?.optJSONArray("values") ?: continue
+                        
+                        for (featIndex in 0 until featuresArrObj.length()) {
+                            val featObj = featuresArrObj.optJSONObject(featIndex)?.optJSONObject("mapValue")?.optJSONObject("fields") ?: continue
+                            val place = parseFirestoreFeature(featObj, docIndex, featIndex)
+                            if (place != null) {
+                                list.add(place)
+                            }
+                        }
+                    } else {
+                        val docPath = docObj.optString("name")
+                        if (docPath.isNotBlank()) {
+                            val chunksQueryUrl = "https://firestore.googleapis.com/v1/${docPath}:runQuery?key=$apiKey"
+                            val chunkQueryBodyJson = """
+                            {
+                              "structuredQuery": {
+                                "from": [
+                                  {
+                                    "collectionId": "chunks",
+                                    "allDescendants": false
+                                  }
+                                ]
+                              }
+                            }
+                            """.trimIndent()
+                            
+                            val chunkBody = okhttp3.RequestBody.create(null, chunkQueryBodyJson)
+                            val chunkReq = okhttp3.Request.Builder()
+                                .url(chunksQueryUrl)
+                                .post(chunkBody)
+                                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                                .header("Accept", "application/json, text/plain, */*")
+                                .build()
+                                
+                            try {
+                                val chunkResp = client.newCall(chunkReq).execute()
+                                val chunkRespStr = chunkResp.body?.string() ?: ""
+                                if (chunkRespStr.isNotBlank() && chunkRespStr.trim().startsWith("[")) {
+                                    val chunkArr = org.json.JSONArray(chunkRespStr)
+                                    for (chunkIndex in 0 until chunkArr.length()) {
+                                        val chunkWrapObj = chunkArr.optJSONObject(chunkIndex) ?: continue
+                                        val chunkDocObj = chunkWrapObj.optJSONObject("document") ?: continue
+                                        val chunkFieldsObj = chunkDocObj.optJSONObject("fields") ?: continue
+                                        
+                                        val chunkFeaturesField = chunkFieldsObj.optJSONObject("features") ?: continue
+                                        val chunkFeaturesArr = chunkFeaturesField.optJSONObject("arrayValue")?.optJSONArray("values") ?: continue
+                                        
+                                        for (featIndex in 0 until chunkFeaturesArr.length()) {
+                                            val featObj = chunkFeaturesArr.optJSONObject(featIndex)?.optJSONObject("mapValue")?.optJSONObject("fields") ?: continue
+                                            val place = parseFirestoreFeature(featObj, docIndex * 10000 + chunkIndex, featIndex)
+                                            if (place != null) {
+                                                list.add(place)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (chunkEx: Exception) {
+                                android.util.Log.e("MapScreen", "Failed to fetch chunk: ${chunkEx.message}")
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MapScreen", "Failed to fetch live point layers from Firestore: ${e.message}")
+        }
+        
+        // Back to main thread with places list
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            onResult(list)
+        }
+    }
+}
+
+fun parseGeoJsonStringToPlaces(jsonStr: String): List<PetPlace> {
+    if (jsonStr.isBlank() || !jsonStr.contains("{")) return emptyList()
+    val list = mutableListOf<PetPlace>()
+    try {
+        val obj = org.json.JSONObject(jsonStr)
+        val features = if (obj.has("features")) {
+            obj.getJSONArray("features")
+        } else if (obj.has("type") && obj.getString("type") == "Feature") {
+            org.json.JSONArray().put(obj)
+        } else {
+            return emptyList()
+        }
+        
+        for (i in 0 until features.length()) {
+            val f = features.getJSONObject(i)
+            val geometry = f.optJSONObject("geometry") ?: continue
+            val properties = f.optJSONObject("properties") ?: org.json.JSONObject()
+            val coordinates = geometry.optJSONArray("coordinates") ?: continue
+            
+            val lng = coordinates.getDouble(0)
+            val lat = coordinates.getDouble(1)
+            
+            val name = when {
+                properties.has("الاسم (عربي)") -> properties.getString("الاسم (عربي)")
+                properties.has("Name (EN)") -> properties.getString("Name (EN)")
+                properties.has("name") -> properties.getString("name")
+                properties.has("title") -> properties.getString("title")
+                properties.has("الاسم") -> properties.getString("الاسم")
+                properties.has("النهر") -> properties.getString("النهر")
+                properties.has("الإقليم") -> properties.getString("الإقليم")
+                else -> "موقع تفاعلي مضاف 📍"
+            }
+            
+            val desc = when {
+                properties.has("الوصف") -> properties.getString("الوصف")
+                properties.has("description") -> properties.getString("description")
+                properties.has("desc") -> properties.getString("desc")
+                else -> "نقطة مستوردة من الموقع التفاعلي الخارجي."
+            }
+            
+            val category = properties.optString("category", "religion")
+            val type = properties.optString("type", "shelter")
+            
+            val mappedCategoryAndType = when {
+                category.contains("vet") || category.contains("clinic") || desc.contains("طبيب") || desc.contains("عيادة") -> {
+                    Pair("عيادات بيطرية 🏥", "clinic")
+                }
+                category.contains("store") || category.contains("shop") || desc.contains("متجر") || desc.contains("محل") -> {
+                    Pair("متاجر ومستلزمات 🛒", "shop")
+                }
+                category.contains("shelter") || category.contains("adopt") || desc.contains("ملجأ") || desc.contains("إيواء") -> {
+                    Pair("الملاجئ والتبني 🐶", "shelter")
+                }
+                category.contains("park") || category.contains("training") || desc.contains("حديقة") || desc.contains("منتزه") -> {
+                    Pair("مراكز تدريب وحدائق 🎓", "park")
+                }
+                else -> {
+                    Pair("النقاط المستوردة 🌐", "clinic")
+                }
+            }
+            
+            list.add(
+                PetPlace(
+                    id = "live_web_${i}_${(100..999).random()}",
+                    name = name,
+                    category = mappedCategoryAndType.first,
+                    type = mappedCategoryAndType.second,
+                    lat = lat,
+                    lng = lng,
+                    desc = desc,
+                    rating = "5.0",
+                    reviews = "موقع",
+                    phone = properties.optString("phone", "-"),
+                    hours = "٢٤ ساعة",
+                    imageUrl = "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"
+                )
+            )
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("MapScreen", "Error parsing live GeoJSON string: ${e.message}")
+    }
+    return list
+}
+
 // Keyless OSM-based Geocoding to translate user text queries into geo coordinates
 fun geocodeAddress(query: String, onResult: (Double?, Double?) -> Unit) {
     if (query.isBlank()) {
@@ -1972,1423 +2283,505 @@ fun geocodeAddress(query: String, onResult: (Double?, Double?) -> Unit) {
     }
 }
 
+// Create beautiful, custom map marker pins programmatically utilizing custom color coding of categories and relevant pet/care emojis
+fun createMarkerIcon(context: android.content.Context, category: String): android.graphics.drawable.Drawable {
+    val density = context.resources.displayMetrics.density
+    val size = (48 * density).toInt() // Ensure proportional touch target visual representation (around 48dp)
+    val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    
+    // Determine color and emoji based on category
+    val (pinColor, emoji) = when (category) {
+        "عيادات بيطرية 🏥" -> Pair(android.graphics.Color.parseColor("#EF4444"), "🏥") // Crimson Red for Urgency/Health
+        "متاجر ومستلزمات 🛒" -> Pair(android.graphics.Color.parseColor("#F97316"), "🛒") // Bright Orange for Retail
+        "الملاجئ والتبني 🐶" -> Pair(android.graphics.Color.parseColor("#3B82F6"), "🐶") // Warm Blue for Shelter care
+        "مراكز تدريب وحدائق 🎓" -> Pair(android.graphics.Color.parseColor("#10B981"), "🎓") // Emerald Green for Parks
+        "العناية والفنادق ✂️" -> Pair(android.graphics.Color.parseColor("#8B5CF6"), "✂️") // Royal Purple for Grooming
+        "بلاغات مفقودة 🚨" -> Pair(android.graphics.Color.parseColor("#EF1253"), "🚨") // Bright Warning Alert
+        "النقاط المستوردة 🌐" -> Pair(android.graphics.Color.parseColor("#0D9488"), "🌐") // Teal for imported layers
+        "موقعي الحالي" -> Pair(android.graphics.Color.parseColor("#06B6D4"), "🐾") // Cool Cyan with Cute Paw standard
+        else -> Pair(android.graphics.Color.parseColor("#6B7280"), "📍") // Sleek Gray fallback
+    }
+    
+    val centerX = size / 2f
+    val centerY = size / 2.5f
+    val radius = size / 3.2f
+    
+    // Draw marker shadow (beautiful soft dark blur)
+    paint.color = android.graphics.Color.parseColor("#1F000000")
+    canvas.drawCircle(centerX, centerY + (4 * density), radius + (2 * density), paint)
+    
+    // Draw pin pointer triangle pointing down
+    val path = android.graphics.Path()
+    path.moveTo(centerX - radius * 0.7f, centerY + radius * 0.5f)
+    path.lineTo(centerX, size * 0.88f)
+    path.lineTo(centerX + radius * 0.7f, centerY + radius * 0.5f)
+    path.close()
+    
+    paint.color = pinColor
+    canvas.drawPath(path, paint)
+    
+    // Draw outer pin circle boundary
+    canvas.drawCircle(centerX, centerY, radius, paint)
+    
+    // Draw white border contour
+    paint.color = android.graphics.Color.WHITE
+    paint.style = android.graphics.Paint.Style.STROKE
+    paint.strokeWidth = 2f * density
+    canvas.drawCircle(centerX, centerY, radius, paint)
+    
+    // Draw inner white circle badge
+    paint.style = android.graphics.Paint.Style.FILL
+    paint.color = android.graphics.Color.WHITE
+    canvas.drawCircle(centerX, centerY, radius * 0.75f, paint)
+    
+    // Draw the emoji icon centered in the badge
+    paint.color = android.graphics.Color.BLACK
+    paint.textSize = radius * 0.95f
+    paint.textAlign = android.graphics.Paint.Align.CENTER
+    val fontMetrics = paint.fontMetrics
+    val textY = centerY - (fontMetrics.ascent + fontMetrics.descent) / 2f
+    canvas.drawText(emoji, centerX, textY, paint)
+    
+    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+}
+
 @Composable
 fun MapScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
-    val incidents by viewModel.strayIncidents.collectAsState()
-    var showReportDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     var filterCategory by remember { mutableStateOf("الكل") }
-    
-    val prefs = remember { context.getSharedPreferences("safepaws_settings", android.content.Context.MODE_PRIVATE) }
-    val savedLat = remember { prefs.getFloat("user_lat", 0f).toDouble() }
-    val savedLng = remember { prefs.getFloat("user_lng", 0f).toDouble() }
+    var selectedPlace by remember { mutableStateOf<PetPlace?>(null) }
+    var isMapLoading by remember { mutableStateOf(false) }
+    var isSyncing by remember { mutableStateOf(false) }
 
-    // Live GPS Location coordinates (load saved location or fallback to null)
-    var userLatitude by remember {
-        mutableStateOf<Double?>(
-            if (savedLat != 0.0) savedLat else null
-        )
-    }
-    var userLongitude by remember {
-        mutableStateOf<Double?>(
-            if (savedLng != 0.0) savedLng else null
-        )
+    val incidentsList by viewModel.strayIncidents.collectAsState()
+
+    // Start centered on Riyadh (24.7136, 46.6753)
+    var mapCenter by remember { mutableStateOf(GeoPoint(24.7136, 46.6753)) }
+    var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    var placesList by remember { mutableStateOf<List<PetPlace>>(emptyList()) }
+    var webPlacesList by remember { mutableStateOf<List<PetPlace>>(emptyList()) }
+
+    // Keep direct reference to the MapView to coordinate programmatic shifts cleanly without recomposition feedback-loops
+    var mapView by remember { mutableStateOf<MapView?>(null) }
+
+    LaunchedEffect(mapCenter) {
+        mapView?.let { mv ->
+            mv.controller.animateTo(mapCenter)
+        }
     }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        )
+    // Configure continuous GPS and Network provider location tracking to dynamically update real-time user point on map
+    val locationListener = remember {
+        object : LocationListener {
+            override fun onLocationChanged(loc: Location) {
+                val gp = GeoPoint(loc.latitude, loc.longitude)
+                userLocation = gp
+            }
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        }
     }
+
+    DisposableEffect(context) {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        try {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 4000L, 2f, locationListener)
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 4000L, 2f, locationListener)
+            }
+        } catch (e: SecurityException) {
+            // Safe fallback
+        }
+        onDispose {
+            try {
+                locationManager.removeUpdates(locationListener)
+            } catch (e: Exception) {
+                // Safe disposal
+            }
+        }
+    }
+
+    // Initialize osmdroid tile cache configuration with correct user-agent on launch
     LaunchedEffect(Unit) {
-        hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        Configuration.getInstance().load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        Configuration.getInstance().userAgentValue = context.packageName
+
+        // Load initial live OSM places around current center coordinates via Overpass
+        isMapLoading = true
+        fetchNearbyPlacesFromOverpass(mapCenter.latitude, mapCenter.longitude) { fetched ->
+            placesList = fetched
+            isMapLoading = false
+        }
     }
 
-    var isGpsEnabled by remember { mutableStateOf(false) }
-    var gpsAccuracy by remember { mutableStateOf<Float?>(null) }
-    var lastLoggedLocation by remember { mutableStateOf<Location?>(null) }
-    var deviceBearing by remember { mutableStateOf(0f) }
-
-    // Dynamic checks of phone's real GPS status
+    // Real-time periodic website sync poller: polls every 10 seconds to grab any dashboard changes instantly!
     LaunchedEffect(Unit) {
         while (true) {
-            val mgr = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            isGpsEnabled = mgr?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
-            kotlinx.coroutines.delay(2000)
-        }
-    }
-
-    // High fidelity compass / device heading sensor registration with dual-method fallback
-    DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? android.hardware.SensorManager
-        val rotationSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR)
-        val accelSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
-        val magSensor = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
-
-        val listener = object : android.hardware.SensorEventListener {
-            var gravity: FloatArray? = null
-            var geomagnetic: FloatArray? = null
-
-            override fun onSensorChanged(event: android.hardware.SensorEvent) {
-                if (event.sensor.type == android.hardware.Sensor.TYPE_ROTATION_VECTOR) {
-                    val rotationMatrix = FloatArray(9)
-                    android.hardware.SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                    val orientationValues = FloatArray(3)
-                    android.hardware.SensorManager.getOrientation(rotationMatrix, orientationValues)
-                    val azimuthInDegrees = Math.toDegrees(orientationValues[0].toDouble()).toFloat()
-                    deviceBearing = (azimuthInDegrees + 360f) % 360f
-                } else {
-                    if (event.sensor.type == android.hardware.Sensor.TYPE_ACCELEROMETER) {
-                        gravity = event.values.clone()
-                    }
-                    if (event.sensor.type == android.hardware.Sensor.TYPE_MAGNETIC_FIELD) {
-                        geomagnetic = event.values.clone()
-                    }
-                    if (gravity != null && geomagnetic != null) {
-                        val r = FloatArray(9)
-                        val i = FloatArray(9)
-                        if (android.hardware.SensorManager.getRotationMatrix(r, i, gravity, geomagnetic)) {
-                            val orientation = FloatArray(3)
-                            android.hardware.SensorManager.getOrientation(r, orientation)
-                            val azimuthInDegrees = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                            deviceBearing = (azimuthInDegrees + 360f) % 360f
-                        }
-                    }
+            isSyncing = true
+            fetchGeoJsonFromUrl("https://interactive-world-map-and-geojson-viewer-716619948402.europe-west3.run.app/") { fetchedWebPlaces ->
+                if (fetchedWebPlaces.isNotEmpty()) {
+                    webPlacesList = fetchedWebPlaces
                 }
+                isSyncing = false
             }
-
-            override fun onAccuracyChanged(sensor: android.hardware.Sensor, accuracy: Int) {}
-        }
-
-        sensorManager?.let { sm ->
-            rotationSensor?.let { sm.registerListener(listener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
-            accelSensor?.let { sm.registerListener(listener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
-            magSensor?.let { sm.registerListener(listener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
-        }
-
-        onDispose {
-            sensorManager?.unregisterListener(listener)
+            kotlinx.coroutines.delay(10000L)
         }
     }
 
-    // Free OpenStreetMap layout setup
-    var lastSearchedLat by remember { mutableStateOf(if (savedLat != 0.0) savedLat else 24.7136) }
-    var lastSearchedLng by remember { mutableStateOf(if (savedLng != 0.0) savedLng else 46.6753) }
-    var mapCenterLat by remember { mutableStateOf(if (savedLat != 0.0) savedLat else 24.7136) }
-    var mapCenterLng by remember { mutableStateOf(if (savedLng != 0.0) savedLng else 46.6753) }
-    var fetchedPlacesList by remember { mutableStateOf<List<PetPlace>>(emptyList()) }
-    var selectedPlace by remember { mutableStateOf<PetPlace?>(null) }
-    var selectedMapStyle by remember { mutableStateOf("voyager") }
-
-    // Center map automatically when location loads initially
-    var hasCenteredMapInitially by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(userLatitude, userLongitude) {
-        val lat = userLatitude
-        val lng = userLongitude
-        if (lat != null && lng != null && !hasCenteredMapInitially) {
-            lastSearchedLat = lat
-            lastSearchedLng = lng
-            mapCenterLat = lat
-            mapCenterLng = lng
-            hasCenteredMapInitially = true
-
-            // Live Fetch around current GPS Center coordinates via Overpass API
-            fetchNearbyPlacesFromOverpass(lat, lng) { results ->
-                fetchedPlacesList = results
-            }
-        }
-    }
-
-    // Load last known GPS location as center until first precision lock arrives
-    LaunchedEffect(Unit) {
-        val savedLatVal = prefs.getFloat("user_lat", 0f).toDouble()
-        val savedLngVal = prefs.getFloat("user_lng", 0f).toDouble()
-        if (savedLatVal != 0.0 && savedLngVal != 0.0) {
-            userLatitude = savedLatVal
-            userLongitude = savedLngVal
-            mapCenterLat = savedLatVal
-            mapCenterLng = savedLngVal
-            android.util.Log.d("MapScreen", "Loaded last verified GPS location on startup: $savedLatVal, $savedLngVal")
-            fetchNearbyPlacesFromOverpass(savedLatVal, savedLngVal) { results ->
-                fetchedPlacesList = results
-            }
-        }
-    }
-
-    // Retrieve active location via GPS with proper unregistration on lifecycle changes
-    DisposableEffect(hasLocationPermission, lifecycleOwner) {
-        var areUpdatesRegistered = false
-        var listener: LocationListener? = null
-        var manager: LocationManager? = null
-
-        fun startLocationUpdates() {
-            val isFineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (!isFineGranted) {
-                android.util.Log.d("MapScreen", "Cannot start location updates: ACCESS_FINE_LOCATION not granted yet.")
-                return
-            }
+    // Dynamic standard location request launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val fineGranted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             try {
-                val appContext = context.applicationContext
-                if (manager == null) {
-                    manager = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                }
-                isGpsEnabled = manager!!.isProviderEnabled(LocationManager.GPS_PROVIDER)
-                
-                // Set up our high-precision location listner with physical filters
-                if (listener == null) {
-                    listener = object : LocationListener {
-                        override fun onLocationChanged(location: Location) {
-                            val acc = location.accuracy
-                            gpsAccuracy = acc
-                            
-                            // 9. If accuracy is greater than 50m, discard
-                            if (acc > 50f) {
-                                android.util.Log.w("MapScreen", "Discarded poor location accuracy: ${acc} meters")
-                                return
-                            }
-                            
-                            // 8. Distance and physical speed check
-                            val prev = lastLoggedLocation
-                            val nowTime = System.currentTimeMillis()
-                            if (prev != null) {
-                                val distance = prev.distanceTo(location)
-                                val timeDeltaSeconds = (nowTime - prev.time) / 1000f
-                                if (timeDeltaSeconds > 0.5f) {
-                                    val speed = distance / timeDeltaSeconds
-                                    if (speed > 150f) { // Stats jump anomalous speed (> 540 km/h)
-                                        android.util.Log.e("MapScreen", "Anomalous speed jump detected: ${speed}m/s. Discarding location update.")
-                                        return
-                                    }
-                                }
-                            }
-                            
-                            // Active verified parameters
-                            userLatitude = location.latitude
-                            userLongitude = location.longitude
-                            lastLoggedLocation = location
-                            
-                            // Persistence
-                            prefs.edit()
-                                .putFloat("user_lat", location.latitude.toFloat())
-                                .putFloat("user_lng", location.longitude.toFloat())
-                                .apply()
-                        }
+                val providers = locationManager.getProviders(true)
+                var bestLoc: Location? = null
+                for (p in providers) {
+                    val l = locationManager.getLastKnownLocation(p) ?: continue
+                    if (bestLoc == null || l.accuracy < bestLoc.accuracy) {
+                        bestLoc = l
                     }
                 }
-                
-                if (!areUpdatesRegistered && manager != null && listener != null) {
-                    manager!!.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER,
-                        1000L,
-                        1f,
-                        listener!!
-                    )
-                    manager!!.requestLocationUpdates(
-                        LocationManager.NETWORK_PROVIDER,
-                        2000L,
-                        2f,
-                        listener!!
-                    )
-                    areUpdatesRegistered = true
-                    android.util.Log.d("MapScreen", "Successfully registered GPS/Network updates")
+                bestLoc?.let {
+                    val gp = GeoPoint(it.latitude, it.longitude)
+                    userLocation = gp
+                    mapCenter = gp
+
+                    isMapLoading = true
+                    fetchNearbyPlacesFromOverpass(it.latitude, it.longitude) { fetched ->
+                        placesList = fetched
+                        isMapLoading = false
+                    }
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("MapScreen", "Error starting location updates: ${e.message}")
+            } catch (e: SecurityException) {
+                // Ignore silent security exceptions
             }
-        }
-
-        fun stopLocationUpdates() {
-            if (manager != null && listener != null && areUpdatesRegistered) {
-                try {
-                    manager!!.removeUpdates(listener!!)
-                    android.util.Log.d("MapScreen", "Successfully removed location updates listener")
-                } catch (e: Exception) {
-                    android.util.Log.e("MapScreen", "Error removing location updates: ${e.message}")
-                }
-            }
-        }
-
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && hasLocationPermission) {
-                startLocationUpdates()
-            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
-                stopLocationUpdates()
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (hasLocationPermission) {
-            startLocationUpdates()
-        }
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            stopLocationUpdates()
         }
     }
 
-    val combinedPlaces = remember(fetchedPlacesList, incidents) {
-        val predefinedSpots = listOf(
-            PetPlace("clinic_1", "مستشفى العاصمة البيطري 🏥", "عيادات بيطرية 🏥", "clinic", 24.7012, 46.6853, "مستشفى متكامل لتقديم خدمات الطوارئ الطبية والجراحة والرعاية السريرية الفائقة بمميزات عالمية.", "4.8", "210", "+966 500001234", "مفتوح ٢٤ ساعة طوارئ", "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("clinic_2", "عيادة د. فهد للحيوانات الأليفة 🏥", "عيادات بيطرية 🏥", "clinic", 24.6852, 46.7214, "تشخيص متقدم، تطعيمات، سونار، ورعاية متميزة لكل أنواع القطط والكلاب رعاية تامة.", "4.6", "115", "+966 507894561", "٠٩:٠٠ ص - ١٠:٠٠ م", "https://images.unsplash.com/photo-1516600118604-51a31610c14b?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("shelter_1", "جمعية رفق لملاقئ الحيوانات 🐶", "الملاجئ والتبني 🐶", "shelter", 24.7584, 46.6432, "ملجأ خيري إنساني لإيواء الكلاب والقطط الضالة وتهيئتها للتبني في بيوت حنونة وآمنة.", "4.9", "154", "+966 501234567", "٠٨:٠٠ ص - ٠٩:٠٠ م", "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("shelter_2", "بيت الأمان لإنقاذ الحيوان 🐶", "الملاجئ والتبني 🐶", "shelter", 24.7153, 46.6268, "موقع إنقاذ وملاجئ القطط لتقديم الاستضافة الطبية المؤقتة والتبني الفوري المجاني لمستحقيها.", "4.7", "89", "+966 551122334", "٠٩:٠٠ ص - ٠٦:٠٠ م", "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("shop_1", "محل واحة أليف لمستلزمات القطط 🛒", "متاجر ومستلزمات 🛒", "shop", 24.7612, 46.6198, "أغذية جافة، رطبة، ألعاب، أقفاص، وإكسسوارات مستوردة فاخرة لحيوانك الأليف المميز.", "4.8", "95", "+966 504443332", "١٠:٠٠ ص - ١١:٠٠ م", "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("grooming_1", "صالون الكلب المدلل للجمال ✂️", "العناية والفنادق ✂️", "grooming", 24.7198, 46.6692, "استحمام، قص شعر، تنظيف مخالب وأذن، سبا هادئ للكلاب والقطط الضالة بأيدي خبراء.", "4.9", "135", "+966 502221115", "١٢:٠٠ م - ١٠:٠٠ م", "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("hotel_1", "فندق السعادة لاستضافة القطط 🏨", "العناية والفنادق ✂️", "hotel", 24.7511, 46.6622, "أجنحة خاصة مكيفة وآمنة بالكامل لإقامة حيوانك الأليف أثناء سفرك، مع رعاية غذائية دقيقة.", "5.0", "78", "+966 505556667", "٠٨:٠٠ ص - ١٠:٠٠ م", "https://images.unsplash.com/photo-1590419690008-905885483012?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("park_1", "حديقة أليفي المفتوحة للعب والتنزه 🎾", "مراكز تدريب وحدائق 🎓", "park", 24.7301, 46.6499, "متنزه رائع مغلق وآمن للتمشية واللعب مع الحيوانات الأليفة في الهواء ومناطق الجري الحرة.", "4.7", "112", "-", "مفتوح ٢٤ ساعة طوال أيام الأسبوع", "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"),
-            PetPlace("training_1", "مدرسة أبطال الرياض لتدريب الكلاب 🎓", "مراكز تدريب وحدائق 🎓", "training", 24.7431, 46.6575, "تدريب على الطاعة، تعديل السلوك، تدريب الحماية والتمشية الهادئة مع أفضل مدربين بالمملكة.", "4.9", "64", "+966 503211234", "٠٤:٠٠ م - ١٠:٠٠ م", "https://images.unsplash.com/photo-1535268647977-a403b69fc756?w=400&auto=format&fit=crop&q=60")
+    // Launch location prompt as soon as user opens map, alongside reliable IP API fallback
+    LaunchedEffect(Unit) {
+        permissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
         )
 
-        val customRescueSpots = incidents.map { incident ->
-            val hash = incident.id.hashCode().toDouble()
-            val latOffset = ((Math.abs(hash) % 100) / 1000.0) - 0.05
-            val lngOffset = (((Math.abs(hash) / 100).toInt() % 100) / 1000.0) - 0.05
-            val latVal = 24.7136 + latOffset
-            val lngVal = 46.6753 + lngOffset
-            PetPlace(
-                id = incident.id,
-                name = incident.title,
-                category = "بلاغات عاجلة 🚨",
-                type = "emergency",
-                lat = latVal,
-                lng = lngVal,
-                desc = "التبليغ عن حالة في: ${incident.location}. تم الرفع بواسطة المتطوع: ${incident.reporter}.",
-                rating = "عاجل",
-                reviews = "شغال",
-                phone = "+966 500000000",
-                hours = "٢٤ ساعة إنقاذ طوارئ",
-                imageUrl = "https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400&auto=format&fit=crop&q=60"
-            )
-        }
-
-        val geoJsonString = """
-        {
-          "type": "FeatureCollection",
-          "features": [
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "مدينة القدس الشريف 🇵🇸",
-                "Name (EN)": "Jerusalem",
-                "النوع": "مدينة تاريخية وعاصمة دينية",
-                "category": "religion",
-                "الوصف": "من أقدم وأقدس مدن العالم ولها وجدان تاريخي فريد ومأوى للتكافل الإنساني."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 35.2137, 31.7683 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "عيادة الرياض البيطرية الحديثة (طبيب حيوانات)",
-                "Name (EN)": "Modern Riyadh Vet Clinic (Doctor)",
-                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
-                "الدولة": "المملكة العربية السعودية",
-                "المدينة": "الرياض",
-                "category": "vet",
-                "الوصف": "تطعيمات، جراحة عامة، رعاية عاجلة بكادر طبي كامل.",
-                "الهاتف": "+966-50-1234567"
-              },
-              "geometry": { "type": "Point", "coordinates": [ 46.6753, 24.7116 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "متجر أليفي لغذاء ومستلزمات القطط والكلاب",
-                "Name (EN)": "Aleefi Pet Store & Supplies",
-                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
-                "الدولة": "المملكة العربية السعودية",
-                "المدينة": "الرياض",
-                "category": "petstore",
-                "الوصف": "أغذية مستوردة، ألعاب قطط، بيوت حيوانات، أقفاص طيور. ساعات العمل: 9:00 ص - 11:30 م"
-              },
-              "geometry": { "type": "Point", "coordinates": [ 46.7234, 24.7301 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "عيادة هليوبوليس للحيوانات الأليفة (دكتور بيطري)",
-                "Name (EN)": "Heliopolis Pet & Vet Clinic (Doctor)",
-                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
-                "الدولة": "مصر",
-                "المدينة": "القاهرة",
-                "category": "vet",
-                "الوصف": "طب أطفال الحيوان، فحص سونار وتحاليل دم، قص أظافر وتجميل. دعم طبي طوارئ على مدار 24 ساعة.",
-                "الهاتف": "+20120000000"
-              },
-              "geometry": { "type": "Point", "coordinates": [ 31.3301, 30.1002 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "متجر كنز الحيوان والأغذية والألعاب",
-                "Name (EN)": "Animal Treasure Pet Shop",
-                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
-                "الدولة": "مصر",
-                "المدينة": "القاهرة",
-                "category": "petstore",
-                "الوصف": "رمل قطط صحي، دراي فود ممتاز، فيتامينات ومكملات غذائية للكلاب."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 31.245, 30.041 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "عيادة الشفاء للطب البيطري (طبيب حيوانات)",
-                "Name (EN)": "Al Shifa Veterinary Cabinets (Doctor)",
-                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
-                "الدولة": "المغرب",
-                "المدينة": "الدار البيضاء",
-                "category": "vet",
-                "الوصف": "تطعيم الكلاب والقطط، عمليات تجميلية وجراحة الفم والأسنان."
-              },
-              "geometry": { "type": "Point", "coordinates": [ -7.59, 33.573 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "محل مستلزمات كلاب وقطط الوفاء والأليفة",
-                "Name (EN)": "Al Wafaa Dog & Cat Pet Market (Shop)",
-                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
-                "الدولة": "المغرب",
-                "المدينة": "الدار البيضاء",
-                "category": "petstore",
-                "الوصف": "أجهزة إطعام أوتوماتيكية، أحواض سمك مجهزة، استشارات تربية مجانية."
-              },
-              "geometry": { "type": "Point", "coordinates": [ -7.611, 33.585 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "عيادة عمان لرعاية الحيوان والطيور (طبيب بيطري)",
-                "Name (EN)": "Amman Animal & Bird Clinic (Doctor)",
-                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
-                "الدولة": "الأردن",
-                "المدينة": "عمان",
-                "category": "vet",
-                "الوصف": "كشف عام، تصوير إشعاعي، وقاية ومكافحة الطفيليات والحشرات للأرانب والهامستر للحيوانات."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 35.91, 31.953 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "متجر طيور الحب وببغاء الزينة وأغذيتها",
-                "Name (EN)": "Love Birds & Parrot Ornament Store & Supplies",
-                "النوع": "متجر ومحل حيوانات أليفة وأغذية",
-                "الدولة": "الأردن",
-                "المدينة": "عمان",
-                "category": "petstore",
-                "الوصف": "بذور طيور مدعمة بالفيتامينات، أقفاص حديدية كبرى، ألعاب تفاعلية للببغاء."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 35.885, 31.972 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "مستشفى الجميرا البيطري المتقدم للحيوانات الأليفة",
-                "Name (EN)": "Jumeirah Veterinary Hospital (Doctor)",
-                "النوع": "طبيب وعيادة بيطرية للحيوانات الأليفة",
-                "الدولة": "الإمارات العربية المتحدة",
-                "المدينة": "دبي",
-                "category": "vet",
-                "الوصف": "أحدث تقنيات التشخيص، رعاية وإقامة فندقية للحيوانات، رعاية يومية صحية كاملة."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 55.28, 25.21 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "العاصمة الرياض",
-                "Name (EN)": "Riyadh",
-                "الدولة": "المملكة العربية السعودية",
-                "Country": "Saudi Arabia",
-                "category": "shelter",
-                "الوصف": "العاصمة التاريخية والسياسية للمملكة ومركز تنموي واقتصادي رائد لخدمات ودعم الرفق بالحيوان."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 46.7196, 24.7136 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "العاصمة القاهرة",
-                "Name (EN)": "Cairo",
-                "الدولة": "مصر",
-                "Country": "Egypt",
-                "category": "shelter",
-                "الوصف": "تأسست عام 969 ميلادي على يد الفاطميين ومشهورة بمدينة الألف مئذنة، وبها العديد من ملاجئ الحيوان."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 31.2357, 30.0444 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "العاصمة بغداد",
-                "Name (EN)": "Baghdad",
-                "الدولة": "العراق",
-                "Country": "Iraq",
-                "category": "shelter",
-                "الوصف": "عاصمة الخلافة العباسية التاريخية ودار الحكمة ومركز العلوم والفلسفة القديم والنشاط الطوعي لإنقاذ الحيوان."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 44.3615, 33.3128 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "العاصمة طوكيو",
-                "Name (EN)": "Tokyo",
-                "الدولة": "اليابان",
-                "Country": "Japan",
-                "category": "shelter",
-                "الوصف": "أكبر حاضرة سكانية في العالم ومزيج فريد من التكنولوجيا الفائقة وتوفر عيادات ذكية ومراكز تبني."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 139.6503, 35.6762 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "العاصمة باريس",
-                "Name (EN)": "Paris",
-                "الدولة": "فرنسا",
-                "Country": "France",
-                "category": "shelter",
-                "الوصف": "مدينة الأنوار التاريخية، مركز عالمي للفن ومجتمعات رعاية وحماية الفصيلة الأليفة."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 2.3522, 48.8566 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الاسم (عربي)": "العاصمة لندن",
-                "Name (EN)": "London",
-                "الدولة": "المملكة المتحدة",
-                "Country": "United Kingdom",
-                "category": "shelter",
-                "الوصف": "عاصمة تاريخية على نهر التايمز، تجمع بين متاحف عريقة وقوة مالية متطورة وقوانين رعاية الحيوان الصارمة."
-              },
-              "geometry": { "type": "Point", "coordinates": [ -0.1278, 51.5074 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "المعلم (عربي)": "أهرامات الجيزة",
-                "Name (EN)": "Giza Pyramids",
-                "category": "park",
-                "الوصف": "مقابر ملوكية للفراعنة خوفو وخفرع ومنقرع بنيت قبل أكثر من 4500 عام وتحتفظ بجاذبيتها المعمارية والشهامة في إنقاذ حيواناتها."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 31.1342, 29.9792 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "المعلم (عربي)": "البتراء (المدينة الوردية)",
-                "Name (EN)": "Petra",
-                "category": "park",
-                "الوصف": "مدينة كاملة منحوتة في الصخور الوردية أسستها حضارة الأنباط العربية وتتميز بنشاط حماية الخيول والجمال للأفواج السياحية."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 35.4444, 30.3285 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "المعلم (عربي)": "المدرج الروماني (الكولوسيوم)",
-                "Name (EN)": "The Colosseum",
-                "category": "park",
-                "الوصف": "أكبر مدرج روماني تاريخي في قلب روما، كان يتسع لحوالي 50 ألف متفرج لمتابعة قتالات المصارعين قديماً."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 12.4922, 41.8902 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "المعلم (عربي)": "تاج محل",
-                "Name (EN)": "Taj Mahal",
-                "category": "park",
-                "الوصف": "ضريح رائع من الرخام الأبيض أقامه الإمبراطور شاه جهان لتخليد ذكرى زوجته الراحلة ممتاز محل ويمثل قمة الفن المغولي."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 78.0421, 27.1751 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "النهر": "نهر النيل العظيم",
-                "Name (EN)": "The Nile River",
-                "category": "rescue",
-                "الوصف": "أطول أنهار العالم، مهد الحضارات التاريخية ومأوى التنوع الحيوي المميز."
-              },
-              "geometry": { "type": "Point", "coordinates": [ 31.2357, 30.0444 ] }
-            },
-            {
-              "type": "Feature",
-              "properties": {
-                "الإقليم": "مثلث برمودا الغامض",
-                "Name (EN)": "Bermuda Triangle",
-                "category": "rescue",
-                "الوصف": "اشتهر تاريخياً بسبب التقارير الغامضة والإشاعات حول اختفاء بعض السفن والطائرات."
-              },
-              "geometry": { "type": "Point", "coordinates": [ -71.0, 25.0 ] }
-            }
-          ]
-        }
-        """.trimIndent()
-
-        val geoJsonPlaces = try {
-            val obj = org.json.JSONObject(geoJsonString)
-            val features = obj.getJSONArray("features")
-            val list = mutableListOf<PetPlace>()
-            for (i in 0 until features.length()) {
-                val f = features.getJSONObject(i)
-                val props = f.getJSONObject("properties")
-                val geom = f.getJSONObject("geometry")
-                val coords = geom.getJSONArray("coordinates")
-                val lngObj = coords.getDouble(0)
-                val latObj = coords.getDouble(1)
-                
-                val nameStr = when {
-                    props.has("الاسم (عربي)") -> props.getString("الاسم (عربي)")
-                    props.has("المعلم (عربي)") -> props.getString("المعلم (عربي)")
-                    props.has("Name (EN)") -> props.getString("Name (EN)")
-                    props.has("name") -> props.getString("name")
-                    props.has("الاسم") -> props.getString("الاسم")
-                    props.has("النهر") -> props.getString("النهر")
-                    props.has("الإقليم") -> props.getString("الإقليم")
-                    else -> "موقع جيو مضاف 📍"
+        fetchIpLocation { lat, lng ->
+            if (userLocation == null) {
+                val gp = GeoPoint(lat, lng)
+                mapCenter = gp
+                isMapLoading = true
+                fetchNearbyPlacesFromOverpass(lat, lng) { fetched ->
+                    placesList = fetched
+                    isMapLoading = false
                 }
-                
-                val descStr = when {
-                    props.has("الوصف") -> props.getString("الوصف")
-                    props.has("description") -> props.getString("description")
-                    props.has("التاريخ") -> props.getString("التاريخ")
-                    props.has("المستلزمات المتوفرة") -> props.getString("المستلزمات المتوفرة")
-                    props.has("المنتجات") -> props.getString("المنتجات")
-                    props.has("الخدمات البيطرية") -> props.getString("الخدمات البيطرية")
-                    props.has("الخدمات") -> props.getString("الخدمات")
-                    else -> "تبين من الخريطة التفاعلية والبيانات الجيوجيسون الممتازة."
-                }
-                
-                val searchStr = (nameStr + " " + descStr + " " + props.optString("النوع") + " " + props.optString("category") + " " + props.optString("التصنيف")).lowercase()
-                
-                val mappedCategoryAndType = when {
-                    searchStr.contains("طبيب") || searchStr.contains("بيطر") || searchStr.contains("عيادة") || searchStr.contains("دكتور") || searchStr.contains("vet") || searchStr.contains("clinic") || searchStr.contains("doctor") || searchStr.contains("veterinary") -> {
-                        Pair("عيادات بيطرية 🏥", "clinic")
-                    }
-                    searchStr.contains("متجر") || searchStr.contains("محل") || searchStr.contains("مستلزمات") || searchStr.contains("shop") || searchStr.contains("store") || searchStr.contains("market") || searchStr.contains("pet store") -> {
-                        Pair("متاجر ومستلزمات 🛒", "shop")
-                    }
-                    searchStr.contains("ملجأ") || searchStr.contains("تبني") || searchStr.contains("إيواء") || searchStr.contains("shelter") || searchStr.contains("sanctuary") || searchStr.contains("الأمان") || searchStr.contains("عاصمة") || searchStr.contains("riyadh") || searchStr.contains("الرياض") || searchStr.contains("القاهرة") || searchStr.contains("بغداد") || searchStr.contains("طوكيو") || searchStr.contains("باريس") || searchStr.contains("لندن") || searchStr.contains("القدس") || searchStr.contains("jerusalem") -> {
-                        Pair("الملاجئ والتبني 🐶", "shelter")
-                    }
-                    searchStr.contains("حديقة") || searchStr.contains("منتزه") || searchStr.contains("تدريب") || searchStr.contains("مدرسة") || searchStr.contains("park") || searchStr.contains("training") || searchStr.contains("zoo") || searchStr.contains("wonder") || searchStr.contains("أهرامات") || searchStr.contains("البتراء") || searchStr.contains("كولوسيوم") || searchStr.contains("تاج محل") -> {
-                        Pair("مراكز تدريب وحدائق 🎓", "park")
-                    }
-                    else -> {
-                        Pair("الملاجئ والتبني 🐶", "shelter")
-                    }
-                }
-                
-                val ratingVal = if (mappedCategoryAndType.second == "clinic" || mappedCategoryAndType.second == "shop") "4.8" else "مميز"
-                val reviewsVal = if (mappedCategoryAndType.second == "clinic" || mappedCategoryAndType.second == "shop") "142" else "إرشاد"
-                val phoneVal = props.optString("الهاتف", "-")
-                
-                list.add(
-                    PetPlace(
-                        id = "geojson_$i",
-                        name = nameStr,
-                        category = mappedCategoryAndType.first,
-                        type = mappedCategoryAndType.second,
-                        lat = latObj,
-                        lng = lngObj,
-                        desc = descStr,
-                        rating = ratingVal,
-                        reviews = reviewsVal,
-                        phone = phoneVal,
-                        hours = "٠٩:٠٠ ص - ٠٩:٠٠ م",
-                        imageUrl = if (mappedCategoryAndType.second == "clinic") {
-                            "https://images.unsplash.com/photo-1516600118604-51a31610c14b?w=400&auto=format&fit=crop&q=60"
-                        } else if (mappedCategoryAndType.second == "shop") {
-                            "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=60"
-                        } else {
-                            "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=60"
-                        }
-                    )
-                )
-            }
-            list
-        } catch (e: Exception) {
-            emptyList<PetPlace>()
-        }
-
-        predefinedSpots + customRescueSpots + fetchedPlacesList + geoJsonPlaces
-    }
-
-    // Filter locations dynamically using the top filters
-    val filteredPlaces = remember(combinedPlaces, filterCategory) {
-        combinedPlaces.filter { place ->
-            when (filterCategory) {
-                "الكل" -> true
-                "الملاجئ والتبني 🐶" -> place.category == "الملاجئ والتبني 🐶" || place.type == "shelter"
-                "عيادات بيطرية 🏥" -> place.category == "عيادات بيطرية 🏥" || place.type == "clinic"
-                "متاجر ومستلزمات 🛒" -> place.category == "متاجر ومستلزمات 🛒" || place.type == "shop"
-                "العناية والفنادق ✂️" -> place.category == "العناية والفنادق ✂️" || place.type == "grooming" || place.type == "hotel"
-                "مراكز تدريب وحدائق 🎓" -> place.category == "مراكز تدريب وحدائق 🎓" || place.type == "training" || place.type == "park"
-                "بلاغات عاجلة 🚨" -> place.category == "بلاغات عاجلة 🚨" || place.type == "emergency"
-                else -> true
             }
         }
     }
 
-    // Detect if camera is far from previous search coords to show the "Search this area" button
-    val showSearchThisAreaButton = remember(mapCenterLat, mapCenterLng, lastSearchedLat, lastSearchedLng) {
-        val latDelta = Math.abs(mapCenterLat - lastSearchedLat)
-        val lngDelta = Math.abs(mapCenterLng - lastSearchedLng)
-        latDelta > 0.015 || lngDelta > 0.015
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Map Heading Controls
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("خريطة التضامن والإنقاذ 📍", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
-                        Text("ابحث عن الملاجئ وعيادات الحيوانات الشريكة وصناديق التغذية.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Button(
-                        onClick = { showReportDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("إرسال بلاغ 🚨", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                // Interactive Filters of Pins
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("الكل", "الملاجئ والتبني 🐶", "عيادات بيطرية 🏥", "متاجر ومستلزمات 🛒", "العناية والفنادق ✂️", "مراكز تدريب وحدائق 🎓", "بلاغات عاجلة 🚨").forEach { category ->
-                        FilterChip(
-                            selected = filterCategory == category,
-                            onClick = { filterCategory = category },
-                            label = { Text(category, fontSize = 11.sp) }
-                        )
-                    }
-                }
-            }
-        }
-
-        // New sleek manual city override geocoding search bar with dynamic OSM integration
-        var locationQuery by remember { mutableStateOf("") }
-        var isLocatingAddress by remember { mutableStateOf(false) }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = locationQuery,
-                onValueChange = { locationQuery = it },
-                placeholder = { Text("أدخل مدينتك لتثبيت موقعك (مثال: الدار البيضاء، الرياض)", fontSize = 11.sp, color = Color.Gray) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp),
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = "موقع",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { ctx ->
+                MapView(ctx).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                },
-                trailingIcon = {
-                    if (locationQuery.isNotEmpty()) {
-                        IconButton(onClick = { locationQuery = "" }) {
-                            Icon(
-                                imageVector = Icons.Default.Clear,
-                                contentDescription = "مسح",
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Search
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSearch = {
-                        if (locationQuery.isNotBlank() && !isLocatingAddress) {
-                            isLocatingAddress = true
-                            geocodeAddress(locationQuery) { lat, lng ->
-                                isLocatingAddress = false
-                                if (lat != null && lng != null) {
-                                    userLatitude = lat
-                                    userLongitude = lng
-                                    mapCenterLat = lat
-                                    mapCenterLng = lng
-                                    hasCenteredMapInitially = false // allow center trigger
-                                    
-                                    prefs.edit()
-                                        .putFloat("user_lat", lat.toFloat())
-                                        .putFloat("user_lng", lng.toFloat())
-                                        .apply()
-                                    
-                                    android.widget.Toast.makeText(context, "تم تحديد مكان الهاتف بنجاح: $locationQuery 🗺️", android.widget.Toast.LENGTH_SHORT).show()
-                                } else {
-                                    android.widget.Toast.makeText(context, "تعذر تحديد الموقع، جرب اسماً آخر للمدينة.", android.widget.Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    }
-                )
-            )
-            Button(
-                onClick = {
-                    if (locationQuery.isNotBlank() && !isLocatingAddress) {
-                        isLocatingAddress = true
-                        geocodeAddress(locationQuery) { lat, lng ->
-                            isLocatingAddress = false
-                            if (lat != null && lng != null) {
-                                userLatitude = lat
-                                userLongitude = lng
-                                mapCenterLat = lat
-                                mapCenterLng = lng
-                                hasCenteredMapInitially = false // allow center trigger
-                                
-                                prefs.edit()
-                                    .putFloat("user_lat", lat.toFloat())
-                                    .putFloat("user_lng", lng.toFloat())
-                                    .apply()
-                                
-                                android.widget.Toast.makeText(context, "تم تحديد مكان الهاتف بنجاح: $locationQuery 🗺️", android.widget.Toast.LENGTH_SHORT).show()
-                            } else {
-                                android.widget.Toast.makeText(context, "تعذر تحديد الموقع، جرب اسماً آخر للمدينة.", android.widget.Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                },
-                enabled = locationQuery.isNotBlank() && !isLocatingAddress,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (isLocatingAddress) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text("انتقال 🗺️", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Interactive free OpenStreetMap Native Container
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .border(2.dp, MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp))
-        ) {
-            var mapViewRef by remember { mutableStateOf<MapView?>(null) }
-
-            // Define gorgeous premium raster styles matching vector aesthetics
-            val cartoVoyager = remember {
-                org.osmdroid.tileprovider.tilesource.XYTileSource(
-                    "CartoDB_Voyager",
-                    1, 19, 256, ".png",
-                    arrayOf(
-                        "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
-                        "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
-                        "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
-                        "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
-                    )
-                )
-            }
-
-            val cartoPositron = remember {
-                org.osmdroid.tileprovider.tilesource.XYTileSource(
-                    "CartoDB_Positron",
-                    1, 19, 256, ".png",
-                    arrayOf(
-                        "https://a.basemaps.cartocdn.com/light_all/",
-                        "https://b.basemaps.cartocdn.com/light_all/",
-                        "https://c.basemaps.cartocdn.com/light_all/",
-                        "https://d.basemaps.cartocdn.com/light_all/"
-                    )
-                )
-            }
-
-            val cartoDarkMatter = remember {
-                org.osmdroid.tileprovider.tilesource.XYTileSource(
-                    "CartoDB_DarkMatter",
-                    1, 19, 256, ".png",
-                    arrayOf(
-                        "https://a.basemaps.cartocdn.com/dark_all/",
-                        "https://b.basemaps.cartocdn.com/dark_all/",
-                        "https://c.basemaps.cartocdn.com/dark_all/",
-                        "https://d.basemaps.cartocdn.com/dark_all/"
-                    )
-                )
-            }
-
-            // Arabic cardinal directions converter helper
-            fun getBearingDirectionArabic(bearing: Float): String {
-                val b = (bearing + 360f) % 360f
-                return when {
-                    b >= 337.5 || b < 22.5 -> "شمال ⬆️"
-                    b >= 22.5 && b < 67.5 -> "شمال شرق ↗️"
-                    b >= 67.5 && b < 112.5 -> "شرق ➡️"
-                    b >= 112.5 && b < 157.5 -> "جنوب شرق ↘️"
-                    b >= 157.5 && b < 202.5 -> "جنوب ⬇️"
-                    b >= 202.5 && b < 247.5 -> "جنوب غرب ↙️"
-                    b >= 247.5 && b < 292.5 -> "غرب ⬅️"
-                    b >= 292.5 && b < 337.5 -> "شمال غرب ↖️"
-                    else -> "شمال ⬆️"
-                }
-            }
-
-            // Custom Dynamic Markers Factory (drawing beautiful emojis in glossy badges / navigation chevron for user)
-            fun createCustomMarkerIcon(context: android.content.Context, type: String): android.graphics.drawable.Drawable {
-                val density = context.resources.displayMetrics.density
-                val size = if (type == "user") (48 * density).toInt() else (46 * density).toInt()
-                val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(bitmap)
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-
-                if (type == "user") {
-                    val scale = density
-                    val centerX = size / 2f
-                    val centerY = size / 2f
-
-                    // 1. Draw a realistic smooth drop-shadow for depth on the map (proportional offset)
-                    val shadowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                        color = 0x88000000.toInt() // High-clarity shadow paint
-                        style = android.graphics.Paint.Style.FILL
-                    }
-                    val shadowPath = android.graphics.Path().apply {
-                        moveTo(centerX + 1.2f * scale, centerY - 16f * scale)
-                        lineTo(centerX + 15f * scale, centerY + 18f * scale)
-                        lineTo(centerX + 1.2f * scale, centerY + 11f * scale)
-                        lineTo(centerX - 13f * scale, centerY + 18f * scale)
-                        close()
-                    }
-                    canvas.drawPath(shadowPath, shadowPaint)
-
-                    // 2. Clear white outline mask wrapping the arrow to pop on both dark & light map backgrounds
-                    val outlinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                        color = android.graphics.Color.WHITE
-                        style = android.graphics.Paint.Style.FILL
-                    }
-                    val outlinePath = android.graphics.Path().apply {
-                        moveTo(centerX, centerY - 20f * scale)
-                        lineTo(centerX + 16f * scale, centerY + 18f * scale)
-                        lineTo(centerX, centerY + 10f * scale)
-                        lineTo(centerX - 16f * scale, centerY + 18f * scale)
-                        close()
-                    }
-                    canvas.drawPath(outlinePath, outlinePaint)
-
-                    // 3. Draw Left wing in a gorgeous light cyber-blue (reflective highlight side)
-                    val leftPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                        color = 0xFF29B6F6.toInt() // Glowing GPS cyan-blue
-                        style = android.graphics.Paint.Style.FILL
-                    }
-                    val leftPath = android.graphics.Path().apply {
-                        moveTo(centerX, centerY - 17f * scale)
-                        lineTo(centerX - 13f * scale, centerY + 15f * scale)
-                        lineTo(centerX, centerY + 8f * scale)
-                        close()
-                    }
-                    canvas.drawPath(leftPath, leftPaint)
-
-                    // 4. Draw Right wing in a darker midnight-blue (3D realism shadow side)
-                    val rightPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                        color = 0xFF0288D1.toInt() // Metallic dark-blue
-                        style = android.graphics.Paint.Style.FILL
-                    }
-                    val rightPath = android.graphics.Path().apply {
-                        moveTo(centerX, centerY - 17f * scale)
-                        lineTo(centerX + 13f * scale, centerY + 15f * scale)
-                        lineTo(centerX, centerY + 8f * scale)
-                        close()
-                    }
-                    canvas.drawPath(rightPath, rightPaint)
-
-                    // 5. Draw a small, minimalist high-tech red beacon dot in the center crease for that aviation-navigator feel
-                    val beaconPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                        color = 0xFFFF5252.toInt() // Vivid highlight red
-                        style = android.graphics.Paint.Style.FILL
-                    }
-                    canvas.drawCircle(centerX, centerY + 2f * scale, 2.5f * scale, beaconPaint)
-
-                    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
-                }
-
-                val colorInt = when (type) {
-                    "clinic" -> 0xFF23B5D3.toInt()     // Vibrant Teal
-                    "shop" -> 0xFF9966CC.toInt()       // Indigo/Pet Purple
-                    "shelter" -> 0xFFF16B22.toInt()    // Creative Orange
-                    "emergency" -> 0xFFD32F2F.toInt()  // Red alert
-                    "grooming", "hotel" -> 0xFF009688.toInt() // Ocean Teal
-                    "training", "park" -> 0xFF4CAF50.toInt() // Green nature
-                    else -> 0xFF757575.toInt()         // Grey fallback
-                }
-
-                // 1. Glow ring
-                paint.color = colorInt
-                paint.alpha = 45
-                canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
-                
-                // 2. Base solid circle
-                paint.alpha = 255
-                paint.color = colorInt
-                canvas.drawCircle(size / 2f, size / 2f, size / 2.6f, paint)
-
-                // 3. Crisp white center
-                paint.color = android.graphics.Color.WHITE
-                canvas.drawCircle(size / 2f, size / 2f, size / 3.4f, paint)
-                
-                // 4. White accent outline
-                paint.apply {
-                    color = android.graphics.Color.WHITE
-                    style = android.graphics.Paint.Style.STROKE
-                    strokeWidth = 2f * density
-                }
-                canvas.drawCircle(size / 2f, size / 2f, size / 2.6f, paint)
-
-                // 5. Draw the emojis cleanly in the center of the badge
-                val symbol = when (type) {
-                    "clinic" -> "🏥"
-                    "shop" -> "🛒"
-                    "shelter" -> "🏠"
-                    "emergency" -> "🚨"
-                    "grooming", "hotel" -> "🧼"
-                    "training", "park" -> "🐾"
-                    else -> "📍"
-                }
-                
-                paint.apply {
-                    style = android.graphics.Paint.Style.FILL
-                    textSize = 13f * density
-                    textAlign = android.graphics.Paint.Align.CENTER
-                }
-                val fontMetrics = paint.fontMetrics
-                val textY = (size / 2f) - ((fontMetrics.ascent + fontMetrics.descent) / 2f)
-                canvas.drawText(symbol, size / 2f, textY, paint)
-
-                return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
-            }
-
-
-
-            // Sync Map view initialization & center behavior
-            LaunchedEffect(hasCenteredMapInitially) {
-                if (hasCenteredMapInitially) {
-                    mapViewRef?.controller?.animateTo(org.osmdroid.util.GeoPoint(mapCenterLat, mapCenterLng))
-                    mapViewRef?.controller?.setZoom(14.5)
-                }
-            }
-
-            AndroidView(
-                factory = { ctx ->
-                    org.osmdroid.config.Configuration.getInstance().userAgentValue = ctx.packageName
+                    setMultiTouchControls(true)
+                    isTilesScaledToDpi = true // Scales map tile images cleanly for crisp look and normalized touch density
+                    setBuiltInZoomControls(false) // Disable clunky overlay buttons; standard pinch-to-zoom is intuitive and responsive
+                    minZoomLevel = 4.0
+                    maxZoomLevel = 20.0
+                    controller.setZoom(14.0)
+                    controller.setCenter(mapCenter)
                     
-                    MapView(ctx).apply {
-                        setMultiTouchControls(true)
-                        setBuiltInZoomControls(false)
-                        
-                        // Set standard initial zoom and center
-                        controller.setZoom(13.5)
-                        controller.setCenter(org.osmdroid.util.GeoPoint(mapCenterLat, mapCenterLng))
-                        
-                        // Track dragging & scrolling to update search coordinates dynamically
-                        addMapListener(object : org.osmdroid.events.MapListener {
-                            override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean {
-                                val center = mapCenter
-                                if (Math.abs(mapCenterLat - center.latitude) > 0.0001 || Math.abs(mapCenterLng - center.longitude) > 0.0001) {
-                                    mapCenterLat = center.latitude
-                                    mapCenterLng = center.longitude
-                                }
-                                return true
-                            }
-                            override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean {
-                                val center = mapCenter
-                                if (Math.abs(mapCenterLat - center.latitude) > 0.0001 || Math.abs(mapCenterLng - center.longitude) > 0.0001) {
-                                    mapCenterLat = center.latitude
-                                    mapCenterLng = center.longitude
-                                }
-                                return true
-                            }
-                        })
-                        
-                        mapViewRef = this
+                    // Prevent parents from intercepting touch gestures when panning/zooming, keeping the map container strictly stable and fixed in place
+                    setOnTouchListener { v, event ->
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        false
                     }
-                },
-                modifier = Modifier.fillMaxSize(),
-                update = { mapView ->
-                    mapView.overlays.clear()
-                    
-                    // Apply Selected Map Premium Theme
-                    val currentTileSource = when (selectedMapStyle) {
-                        "positron" -> cartoPositron
-                        "dark" -> cartoDarkMatter
-                        else -> cartoVoyager
-                    }
-                    if (mapView.tileProvider.tileSource.name() != currentTileSource.name()) {
-                        mapView.setTileSource(currentTileSource)
-                    }
+                    mapView = this
+                }
+            },
+            update = { mv ->
+                mv.overlays.clear()
 
-                    // 1. Enable Live phone's compass overlay nicely rotated facing direction
-                    try {
-                        val compassOverlay = org.osmdroid.views.overlay.compass.CompassOverlay(
-                            mapView.context,
-                            org.osmdroid.views.overlay.compass.InternalCompassOrientationProvider(mapView.context),
-                            mapView
-                        ).apply {
-                            enableCompass()
-                            // Move compass down to prevent overlap with Map Styles
-                            setCompassCenter(32f * mapView.context.resources.displayMetrics.density, 75f * mapView.context.resources.displayMetrics.density)
-                        }
-                        mapView.overlays.add(compassOverlay)
-                    } catch (e: Exception) {
-                        android.util.Log.e("MapScreen", "Error loading compass: ${e.message}")
+                // 1. Draw user standard location pin if loaded
+                userLocation?.let { loc ->
+                    val userM = Marker(mv).apply {
+                        position = loc
+                        title = "موقعي الحالي 🐾"
+                        icon = createMarkerIcon(context, "موقعي الحالي")
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     }
+                    mv.overlays.add(userM)
+                }
 
-                    // 2. Clear & Draw colored Polyline route line path to selected animal care
-                    val userLat = userLatitude
-                    val userLng = userLongitude
-                    val selected = selectedPlace
-                    if (selected != null && userLat != null && userLng != null) {
-                        val routeLine = org.osmdroid.views.overlay.Polyline(mapView).apply {
-                            val points = listOf(
-                                org.osmdroid.util.GeoPoint(userLat, userLng),
-                                org.osmdroid.util.GeoPoint(selected.lat, selected.lng)
-                            )
-                            setPoints(points)
-                            
-                            outlinePaint.apply {
-                                color = 0xFF1E88E5.toInt() // Blue neon modern path
-                                strokeWidth = 10f
-                                strokeCap = android.graphics.Paint.Cap.ROUND
-                                isAntiAlias = true
-                            }
-                        }
-                        mapView.overlays.add(routeLine)
-                    }
+                // 2. Filter and Draw nearby pet services points (OSM + dynamically fetched website map pins)
+                val combinedPlaces = (placesList + webPlacesList).distinctBy { it.id }
+                combinedPlaces.forEach { place ->
+                    val matchesQuery = searchQuery.isBlank() || 
+                                       place.name.contains(searchQuery, ignoreCase = true) || 
+                                       place.desc.contains(searchQuery, ignoreCase = true)
                     
-                    // ٣. إضافة علامات دبابيس الحيوانات الأليفة (Pet Places Markers)
-                    // تتضمن هذه القائمة المواقع الساكنة التي تم إدخال إحداثياتها يدوياً (Hardcoded coordinates) مثل العيادات والملاجئ
-                    filteredPlaces.forEach { place ->
-                        val marker = org.osmdroid.views.overlay.Marker(mapView).apply {
-                            position = org.osmdroid.util.GeoPoint(place.lat, place.lng)
-                            title = place.name
-                            snippet = place.category
-                            
-                            // شرح استخدام أيقونة مخصصة (Custom Drawable icon like a dog or cat icon):
-                            // لاستخدام ملف drawable مخصص من مجلد التطبيق (مثال: ic_dog أو ic_cat):
-                            // val customIcon = androidx.core.content.ContextCompat.getDrawable(mapView.context, R.drawable.ic_custom_dog)
-                            // icon = customIcon
-                            
-                            // نستخدم هنا المولد التفاعلي المصمم لإنتاج أيقونات مميزة بألوان متناسقة لكل نوع (عيادة، متجر، ملجأ) لتفادي أي كراش
-                            icon = createCustomMarkerIcon(mapView.context, place.type)
-                            
-                            setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_CENTER)
-                            setOnMarkerClickListener { m, _ ->
+                    val matchesCategory = filterCategory == "الكل" || place.category == filterCategory
+
+                    if (matchesQuery && matchesCategory) {
+                        val emoji = when (place.category) {
+                            "عيادات بيطرية 🏥" -> "🏥"
+                            "متاجر ومستلزمات 🛒" -> "🛒"
+                            "الملاجئ والتبني 🐶" -> "🐶"
+                            "مراكز تدريب وحدائق 🎓" -> "🎓"
+                            "العناية والفنادق ✂️" -> "✂️"
+                            "النقاط المستوردة 🌐" -> "🌐"
+                            else -> "📍"
+                        }
+                        val pm = Marker(mv).apply {
+                            position = GeoPoint(place.lat, place.lng)
+                            title = "$emoji ${place.name}"
+                            subDescription = place.desc
+                            icon = createMarkerIcon(context, place.category)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            setOnMarkerClickListener { marker, map ->
                                 selectedPlace = place
-                                mapView.controller.animateTo(m.position)
-                                m.showInfoWindow()
+                                mapCenter = marker.position as GeoPoint
                                 true
                             }
                         }
-                        mapView.overlays.add(marker)
+                        mv.overlays.add(pm)
                     }
+                }
+
+                // 3. Filter and Draw emergency rescue incidents (from Community Tab) as warning markers on the map
+                incidentsList.forEach { incident ->
+                    val matchesQuery = searchQuery.isBlank() || 
+                                       incident.title.contains(searchQuery, ignoreCase = true) || 
+                                       incident.description.contains(searchQuery, ignoreCase = true)
                     
-                    // ٤. علامة الموقع الحالي التفاعلية والنباضة مع سهم التوجيه الدوار للأقمار الصناعية (Live Navigational Pulsing User Marker with Heading)
-                    if (userLat != null && userLng != null) {
-                        val userMarker = org.osmdroid.views.overlay.Marker(mapView).apply {
-                            position = org.osmdroid.util.GeoPoint(userLat, userLng)
-                            title = "موقعك الحالي - الاتجاه: ${getBearingDirectionArabic(deviceBearing)} 🧭"
-                            icon = createCustomMarkerIcon(mapView.context, "user")
-                            setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_CENTER)
-                            rotation = -deviceBearing // Rotate live with precision compass azimuth values
-                        }
-                        mapView.overlays.add(userMarker)
-                    }
-                    
-                    mapView.invalidate()
-                }
-            )
+                    val matchesCategory = filterCategory == "الكل" || filterCategory == "بلاغات مفقودة 🚨"
 
-            // FLOATING Style selector for Voyager, Light, and Dark styles
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(12.dp)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                listOf(
-                    "voyager" to "🌈 ملون",
-                    "positron" to "☀️ فاتح",
-                    "dark" to "🌙 داكن"
-                ).forEach { (styleKey, label) ->
-                    val isSelected = selectedMapStyle == styleKey
-                    Surface(
-                        onClick = { selectedMapStyle = styleKey },
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 10.dp)
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-
-            // FLOATING "Search this Area" button
-            if (showSearchThisAreaButton) {
-                Button(
-                    onClick = {
-                        lastSearchedLat = mapCenterLat
-                        lastSearchedLng = mapCenterLng
-                        fetchNearbyPlacesFromOverpass(mapCenterLat, mapCenterLng) { results ->
-                            fetchedPlacesList = results
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text("البحث في هذه المنطقة 🔍", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            // FLOATING location center GPS Recenter Button
-            FloatingActionButton(
-                onClick = {
-                    val lat = userLatitude
-                    val lng = userLongitude
-                    if (lat != null && lng != null && mapViewRef != null) {
-                        mapViewRef?.controller?.animateTo(org.osmdroid.util.GeoPoint(lat, lng))
-                        mapViewRef?.controller?.setZoom(16.0)
-                        mapCenterLat = lat
-                        mapCenterLng = lng
-                        android.widget.Toast.makeText(context, "تم الانتقال إلى إحداثيات موقعك الحقيقي الدقيق 🎯", android.widget.Toast.LENGTH_SHORT).show()
-                        
-                        // Dynamic Fetch around current GPS coordinates
-                        fetchNearbyPlacesFromOverpass(lat, lng) { results ->
-                            fetchedPlacesList = results
-                        }
-                    } else {
-                        val mgr = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager
-                        val isGeonEnabled = mgr?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true
-                        if (!isGeonEnabled) {
-                            android.widget.Toast.makeText(context, "⚠️ الـ GPS مغلق بالجهاز! يرجى تشغيله من إعدادات الهاتف والمحاولة مجدداً.", android.widget.Toast.LENGTH_LONG).show()
-                            try {
-                                val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                                context.startActivity(intent)
-                            } catch (e: Exception) {}
-                        } else {
-                            android.widget.Toast.makeText(context, "⚠️ جاري البحث عن إشارة GPS الدقيقة والاتصال بالأقمار الصناعية... يرجى الانتظار والوقوف في مكان مكشوف.", android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                shape = CircleShape,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = if (selectedPlace != null) 220.dp else 16.dp, end = 16.dp)
-                    .size(48.dp)
-            ) {
-                Icon(Icons.Default.MyLocation, contentDescription = "تحديد موقعي")
-            }
-
-            // BEAUTIFUL GPS DEBUGGER & STATUS PANEL
-            var isExpanded by remember { mutableStateOf(false) }
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 16.dp, bottom = if (selectedPlace != null) 235.dp else 16.dp)
-                    .widthIn(max = 260.dp)
-                    .shadow(6.dp, RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isExpanded = !isExpanded },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text("بيانات الـ GPS الحقيقية لموقعك 🛰️", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                        }
-                        Text(if (isExpanded) "▲" else "▼", fontSize = 10.sp, color = Color.Gray)
-                    }
-                    if (isExpanded) {
-                        androidx.compose.material3.HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray)
-                        
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("خط العرض:", fontSize = 10.sp, color = Color.Gray)
-                            Text(userLatitude?.let { String.format("%.6f", it) } ?: "جاري رصد الأقمار...", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("خط الطول:", fontSize = 10.sp, color = Color.Gray)
-                            Text(userLongitude?.let { String.format("%.6f", it) } ?: "جاري رصد الأقمار...", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("دقة الموقع:", fontSize = 10.sp, color = Color.Gray)
-                            Text(gpsAccuracy?.let { "${String.format("%.1f", it)} متر" } ?: "لم يتم التحديد بعد", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("حالة الـ GPS بالجهاز:", fontSize = 10.sp, color = Color.Gray)
-                            Text(if (isGpsEnabled) "مفعّل ✅" else "معطل ❌", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isGpsEnabled) Color(0xFF2E7D32) else Color.Red)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("إذن تحديد الموقع:", fontSize = 10.sp, color = Color.Gray)
-                            Text(if (hasLocationPermission) "مسموح ✅" else "مرفوض ❌", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (hasLocationPermission) Color(0xFF2E7D32) else Color.Red)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("اتجاه البوصلة الحالي:", fontSize = 10.sp, color = Color.Gray)
-                            Text("${Math.round(deviceBearing)}° ${getBearingDirectionArabic(deviceBearing)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-
-            // FLOATING PENDING SATELLITE WARNING BANNER
-            if (userLatitude == null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .padding(horizontal = 16.dp, vertical = 75.dp)
-                        .shadow(8.dp, RoundedCornerShape(14.dp)),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                strokeWidth = 2.dp
-                            )
-                            Text(
-                                text = "🛰️ بانتظار إشارة GPS حقيقية عالية الدقة...",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = "تم تعطيل المحاكاة وخوادم تحديد المواقع التقريبية تماماً حفاظاً على سلامتك. يرجى الوقوف في مكان مكشوف أو تفعيل خدمة الـ GPS الهاتفية والانتظار لقفل القمر الصناعي.",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            lineHeight = 14.sp
-                        )
-                        if (!isGpsEnabled) {
-                            Button(
-                                onClick = {
-                                    try {
-                                        val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "الرجاء فتح إعدادات مستوى الموقع يدوياً.", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Text("تفعيل مستوى الموقع (GPS) ⚙️", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    if (matchesQuery && matchesCategory) {
+                        val pm = Marker(mv).apply {
+                            position = GeoPoint(incident.lat, incident.lng)
+                            title = "🚨 بلاغ مفقود: ${incident.title}"
+                            subDescription = "${incident.description}\nالموقع: ${incident.location}\nالمبلّغ: ${incident.reporter}"
+                            icon = createMarkerIcon(context, "بلاغات مفقودة 🚨")
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            setOnMarkerClickListener { marker, map ->
+                                selectedPlace = PetPlace(
+                                    id = incident.id,
+                                    name = "بلاغ مفقود: ${incident.title}",
+                                    category = "بلاغات مفقودة 🚨",
+                                    type = "emergency",
+                                    lat = incident.lat,
+                                    lng = incident.lng,
+                                    desc = incident.description,
+                                    rating = "٥.٠",
+                                    reviews = "مغلق",
+                                    phone = "بلاغ من المجتمع",
+                                    hours = incident.timestamp,
+                                    imageUrl = ""
+                                )
+                                mapCenter = marker.position as GeoPoint
+                                true
                             }
                         }
+                        mv.overlays.add(pm)
+                    }
+                }
+
+                mv.invalidate()
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 1. Top Controls: Search Bar + Live Connection Pulse + Category Filters
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(16.dp)
+                .padding(top = 28.dp) // Leave clean space for edge-to-edge status bar
+        ) {
+            // Elegant real-time search & live sync header card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(4.dp, RoundedCornerShape(28.dp)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "بحث",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("map_search_field"),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp
+                        ),
+                        decorationBox = { innerTextField ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "البحث عن عيادات، متاجر، بلاغات مفقودة...",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                    
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Live Sync status pulse indicating dynamic website updates
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                color = if (isSyncing) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) 
+                                        else Color(0xFF10B981).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val pulseAlpha by rememberInfiniteTransition(label = "").animateFloat(
+                            initialValue = 0.4f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1000, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = ""
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    color = if (isSyncing) MaterialTheme.colorScheme.primary 
+                                            else Color(0xFF10B981)
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isSyncing) "مزامنة..." else "مباشر 🌐",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSyncing) MaterialTheme.colorScheme.primary 
+                                    else Color(0xFF047857)
+                        )
+                    }
+
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Clear, contentDescription = "مسح", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
             }
 
-            // SLIDE-UP Details bottom card when a pin is clicked
-            if (selectedPlace != null) {
-                val place = selectedPlace!!
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Scrollable dynamic M3 category filter chips row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val chipsList = listOf(
+                    "الكل",
+                    "عيادات بيطرية 🏥",
+                    "متاجر ومستلزمات 🛒",
+                    "الملاجئ والتبني 🐶",
+                    "العناية والفنادق ✂️",
+                    "بلاغات مفقودة 🚨",
+                    "النقاط المستوردة 🌐"
+                )
+                chipsList.forEach { cat ->
+                    val isSelected = filterCategory == cat
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { filterCategory = cat },
+                        label = { Text(cat, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
+                            borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            selectedBorderColor = Color.Transparent
+                        )
+                    )
+                }
+            }
+        }
+
+        // Loading cover
+        if (isMapLoading) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
+            }
+        }
+
+        // Expanded Place Detail Floating card
+        selectedPlace?.let { place ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(14.dp)
+                    .padding(bottom = 6.dp)
+            ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .padding(12.dp)
-                        .shadow(16.dp, RoundedCornerShape(16.dp)),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        .shadow(6.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Header info
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.Top
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -3397,117 +2790,107 @@ fun MapScreen(viewModel: MainViewModel) {
                                     fontSize = 15.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Text(
-                                    text = place.category,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = "شريك معتمد 🤝",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Rating, Hours, Phone and Photo
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            AsyncImage(
-                                model = place.imageUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(70.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = Color(0xFFFFB300),
-                                        modifier = Modifier.size(16.dp)
-                                    )
                                     Text(
-                                        text = place.rating,
+                                        text = place.category,
+                                        style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        color = MaterialTheme.colorScheme.primary
                                     )
+                                    Text("•", color = Color.Gray)
                                     Text(
-                                        text = "(${place.reviews} مراجعة)",
-                                        fontSize = 11.sp,
+                                        text = "⭐ ${place.rating} (${place.reviews} مراجعة)",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = Color.Gray
                                     )
                                 }
-                                Text("⏱️ دوام العمل: ${place.hours}", fontSize = 11.sp)
-                                Text("📞 للتواصل: ${place.phone}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            IconButton(
+                                onClick = { selectedPlace = null },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.Gray, modifier = Modifier.size(16.dp))
                             }
                         }
 
-                        // Location Description Details
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Text(
                             text = place.desc,
-                            fontSize = 11.sp,
-                            color = Color.DarkGray,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        // Action buttons
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(text = "🕒 ساعات العمل:", fontSize = 9.sp, color = Color.Gray)
+                                Text(text = place.hours, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text(text = "📞 هاتف الخدمة:", fontSize = 9.sp, color = Color.Gray)
+                                Text(text = place.phone, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Button(
                                 onClick = {
-                                    android.widget.Toast.makeText(context, "جاري إطلاق محاكاة المسار ونقاط الاتجاهات...", android.widget.Toast.LENGTH_SHORT).show()
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("phone", place.phone)
+                                    clipboard.setPrimaryClip(clip)
+                                    android.widget.Toast.makeText(context, "تم نسخ الرقم: ${place.phone}", android.widget.Toast.LENGTH_SHORT).show()
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.weight(2f),
-                                shape = RoundedCornerShape(10.dp)
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text("🚗 رسم المسار", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Phone, contentDescription = "اتصال", modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("اتصال", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Button(
                                 onClick = {
-                                    android.widget.Toast.makeText(context, "جاري الاتصال بـ ${place.name}...", android.widget.Toast.LENGTH_SHORT).show()
+                                    val gmmIntentUri = android.net.Uri.parse("geo:0,0?q=${place.lat},${place.lng}(${place.name})")
+                                    val mapIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, gmmIntentUri)
+                                    mapIntent.setPackage("com.google.android.apps.maps")
+                                    if (mapIntent.resolveActivity(context.packageManager) != null) {
+                                        context.startActivity(mapIntent)
+                                    } else {
+                                        val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}"))
+                                        context.startActivity(webIntent)
+                                    }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp)
+                                contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text("📞 اتصل", fontSize = 12.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = { selectedPlace = null },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("إغلاق", fontSize = 12.sp)
+                                Icon(Icons.Default.Navigation, contentDescription = "الاتجاهات", modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("الاتجاهات", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 

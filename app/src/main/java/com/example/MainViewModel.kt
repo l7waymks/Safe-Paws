@@ -49,7 +49,9 @@ data class StrayIncident(
     val commentsCount: Int,
     val likesCount: Int,
     val isEmergency: Boolean = false,
-    val timestamp: String
+    val timestamp: String,
+    val lat: Double = 24.7136,
+    val lng: Double = 46.6753
 )
 
 class MainViewModel : ViewModel() {
@@ -110,9 +112,9 @@ class MainViewModel : ViewModel() {
     // Stray Map Pins state
     private val _strayIncidents = MutableStateFlow(
         listOf(
-            StrayIncident("s1", "أربعة جراء ضائعة بحاجة لرعاية عاجلة", "تم العثور عليها وحالتها مستقرة بانتظار تبنيها.", "حي الياسمين، الرياض", "أحمد محمد", 41, 240, true, "منذ يومين"),
-            StrayIncident("s2", "كلب جولدن - حالة طارئة", "يحتاج لعملية جراحية عاجلة. شارك للمساعدة!", "حي الملز، الرياض", "أحمد محمد", 18, 1200, true, "منذ ٥ ساعات"),
-            StrayIncident("s3", "جمال العيون في الطبيعة", "لقطة فنية لإحدى حالات الإنقاذ السابقة.", "حي السليمانية، الرياض", "سارة أحمد", 124, 182, false, "منذ ٣ أيام")
+            StrayIncident("s1", "أربعة جراء ضائعة بحاجة لرعاية عاجلة", "تم العثور عليها وحالتها مستقرة بانتظار تبنيها.", "حي الياسمين، الرياض", "أحمد محمد", 41, 240, true, "منذ يومين", 24.8136, 46.6853),
+            StrayIncident("s2", "كلب جولدن - حالة طارئة", "يحتاج لعملية جراحية عاجلة. شارك للمساعدة!", "حي الملز، الرياض", "أحمد محمد", 18, 1200, true, "منذ ٥ ساعات", 24.6636, 46.7253),
+            StrayIncident("s3", "جمال العيون في الطبيعة", "لقطة فنية لإحدى حالات الإنقاذ السابقة.", "حي السليمانية، الرياض", "سارة أحمد", 124, 182, false, "منذ ٣ أيام", 24.7036, 46.6953)
         )
     )
     val strayIncidents: StateFlow<List<StrayIncident>> = _strayIncidents.asStateFlow()
@@ -301,6 +303,9 @@ class MainViewModel : ViewModel() {
 
     fun submitNewRescue(title: String, desc: String, location: String) {
         if (title.isBlank() || desc.isBlank() || location.isBlank()) return
+        // Generate random offset within Riyadh region
+        val randomLat = 24.7136 + (Math.random() - 0.5) * 0.15
+        val randomLng = 46.6753 + (Math.random() - 0.5) * 0.15
         val newIncident = StrayIncident(
             id = "s_${(100..999).random()}",
             title = title,
@@ -310,7 +315,9 @@ class MainViewModel : ViewModel() {
             commentsCount = 0,
             likesCount = 0,
             isEmergency = true,
-            timestamp = "الآن"
+            timestamp = "الآن",
+            lat = randomLat,
+            lng = randomLng
         )
         _strayIncidents.value = listOf(newIncident) + _strayIncidents.value
         _rescuesCount.value = _rescuesCount.value + 1
