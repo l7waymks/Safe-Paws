@@ -1,6 +1,0 @@
-{
-  "name": "Safe Paws / بيت الأمان",
-  "description": "Comprehensive animal welfare, street rescue, fostering, and smart adoption platform with AI Match & Supabase integration.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
